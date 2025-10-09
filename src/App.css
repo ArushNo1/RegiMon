@@ -1,0 +1,149 @@
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+h1 {
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.controls {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin-bottom: 30px;
+  padding: 20px;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: opacity 0.2s;
+}
+
+button:hover {
+  opacity: 0.8;
+}
+
+.btn-success {
+  background: #4caf50;
+  color: white;
+}
+
+.btn-danger {
+  background: #f44336;
+  color: white;
+}
+
+.status {
+  font-weight: bold;
+}
+
+.path-manager {
+  margin-bottom: 30px;
+  padding: 20px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.add-path {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.add-path input {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.path-list {
+  list-style: none;
+  padding: 0;
+}
+
+.path-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+  margin-bottom: 5px;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+
+.changes {
+  padding: 20px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.changes-list {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.change-item {
+  padding: 15px;
+  margin-bottom: 10px;
+  border-left: 4px solid #ccc;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+
+.change-item.modified {
+  border-left-color: #ff9800;
+  background: #fff3e0;
+}
+
+.change-item.added {
+  border-left-color: #4caf50;
+  background: #e8f5e9;
+}
+
+.change-item.deleted {
+  border-left-color: #f44336;
+  background: #ffebee;
+}
+
+.change-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.change-type {
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.timestamp {
+  color: #666;
+  font-size: 12px;
+}
+
+.change-details {
+  margin: 5px 0;
+  font-size: 14px;
+}
+
+.change-details.old {
+  color: #d32f2f;
+}
+
+.change-details.new {
+  color: #388e3c;
+}
