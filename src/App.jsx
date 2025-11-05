@@ -9,9 +9,36 @@ function App() {
   const [registryPaths, setRegistryPaths] = useState([
     'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
     'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run',
+    'HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation'
   ]);
   const [newPath, setNewPath] = useState('');
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const regpaths = await fetch('registry-paths.json', { cache: 'no-cache' });
+        if(!regpaths.ok) throw new Error('Failed to fetch registry paths');
+
+        const text = await regpaths.text();
+        let paths;
+        try {
+          const json = JSON.parse(text);
+          paths = Array.isArray(json) ? json : json.registryPaths;
+        } catch {
+          paths = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+        }
+        paths = paths.filter(path => path && !path.startsWith("//"));
+
+        if(!cancelled){
+          setRegistryPaths(Array.isArray(paths) && paths.length ? paths : DEFAULT_REGISTRY_PATHS);
+        }
+      } catch {
+        if(!cancelled) setRegistryPaths(DEFAULT_REGISTRY_PATHS);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     // Listen for registry changes
     const unlisten = listen('registry-change', (event) => {
