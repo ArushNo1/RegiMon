@@ -28,7 +28,6 @@ function App() {
         } catch {
           paths = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
         }
-        paths = paths.filter(path => path && !path.startsWith("//"));
 
         if(!cancelled){
           setRegistryPaths(Array.isArray(paths) && paths.length ? paths : DEFAULT_REGISTRY_PATHS);
@@ -93,64 +92,90 @@ function App() {
   }
 
   return (
-    <div className="container">
-      <h1>Windows Registry Monitor</h1>
+    <div className="max-w-6xl mx-auto p-5 font-sans">
+      <h1 className="text-3xl font-bold text-gray-800 mb-5">Windows Registry Monitor</h1>
 
-      <div className="controls">
+      <div className="flex gap-5 items-center mb-8 p-5 bg-gray-100 rounded-lg">
         <button
           onClick={monitoring ? handleStopMonitoring : handleStartMonitoring}
-          className={monitoring ? 'btn-danger' : 'btn-success'}
+          className={`px-5 py-2.5 border-none rounded cursor-pointer text-base transition-opacity hover:opacity-80 ${
+            monitoring ? 'bg-red-500 text-white' : 'bg-green-500 text-white'
+          }`}
         >
           {monitoring ? 'Stop Monitoring' : 'Start Monitoring'}
         </button>
-        <span className="status">
+        <span className="font-bold">
           Status: {monitoring ? '🟢 Monitoring' : '🔴 Stopped'}
         </span>
       </div>
 
-      <div className="path-manager">
-        <h2>Monitored Registry Paths</h2>
-        <div className="add-path">
+      <div className="mb-8 p-5 bg-white border border-gray-300 rounded-lg">
+        <h2 className="text-xl font-bold mb-4">Monitored Registry Paths</h2>
+        <div className="flex gap-2.5 mb-4">
           <input
             type="text"
             placeholder="HKEY_CURRENT_USER\Software\..."
             value={newPath}
             onChange={(e) => setNewPath(e.target.value)}
+            className="flex-1 px-2 py-2 border border-gray-300 rounded"
           />
-          <button onClick={addPath}>Add Path</button>
+          <button 
+            onClick={addPath}
+            className="px-5 py-2 bg-blue-500 text-white border-none rounded cursor-pointer hover:bg-blue-600 transition-colors"
+          >
+            Add Path
+          </button>
         </div>
-        <ul className="path-list">
+        <ul className="list-none p-0">
           {registryPaths.map((path) => (
-            <li key={path}>
-              <span>{path}</span>
-              <button onClick={() => removePath(path)}>Remove</button>
+            <li key={path} className="flex justify-between items-center p-2.5 mb-1 bg-gray-50 rounded">
+              <span className="flex-1 break-all">{path}</span>
+              <button 
+                onClick={() => removePath(path)}
+                className="ml-2 px-3 py-1 bg-red-500 text-white border-none rounded cursor-pointer hover:bg-red-600 transition-colors text-sm"
+              >
+                Remove
+              </button>
             </li>
           ))}
         </ul>
       </div>
 
-      <div className="changes">
-        <h2>Recent Changes ({changes.length})</h2>
-        <div className="changes-list">
+      <div className="p-5 bg-white border border-gray-300 rounded-lg">
+        <h2 className="text-xl font-bold mb-4">Recent Changes ({changes.length})</h2>
+        <div className="max-h-[600px] overflow-y-auto">
           {changes.map((change, index) => (
-            <div key={index} className={`change-item ${change.change_type}`}>
-              <div className="change-header">
-                <span className="change-type">{change.change_type.toUpperCase()}</span>
-                <span className="timestamp">{new Date(change.timestamp).toLocaleString()}</span>
+            <div 
+              key={index} 
+              className={`p-4 mb-2.5 border-l-4 rounded ${
+                change.change_type === 'modified' 
+                  ? 'border-l-orange-500 bg-orange-50' 
+                  : change.change_type === 'added'
+                  ? 'border-l-green-500 bg-green-50'
+                  : 'border-l-red-500 bg-red-50'
+              }`}
+            >
+              <div className="flex justify-between mb-2.5">
+                <span className="font-bold px-2 py-0.5 rounded text-xs uppercase bg-gray-200">
+                  {change.change_type}
+                </span>
+                <span className="text-gray-600 text-xs">
+                  {new Date(change.timestamp).toLocaleString()}
+                </span>
               </div>
-              <div className="change-details">
+              <div className="my-1 text-sm">
                 <strong>Path:</strong> {change.key_path}
               </div>
-              <div className="change-details">
+              <div className="my-1 text-sm">
                 <strong>Value:</strong> {change.value_name}
               </div>
               {change.old_value && (
-                <div className="change-details old">
+                <div className="my-1 text-sm text-red-700">
                   <strong>Old:</strong> {change.old_value}
                 </div>
               )}
               {change.new_value && (
-                <div className="change-details new">
+                <div className="my-1 text-sm text-green-700">
                   <strong>New:</strong> {change.new_value}
                 </div>
               )}
