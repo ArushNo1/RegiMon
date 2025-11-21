@@ -63,6 +63,7 @@ function App() {
   const [changes, setChanges] = useState([]);
   const [registryPaths, setRegistryPaths] = useState(DEFAULT_REGISTRY_PATHS);
   const [currentScreen, setCurrentScreen] = useState('monitor'); // 'monitor' or 'changes'
+  const [newPath, setNewPath] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -130,6 +131,17 @@ function App() {
     } catch (error) {
       console.error('Failed to stop monitoring:', error);
     }
+  }
+
+  function addPath() {
+    if (newPath && !registryPaths.includes(newPath)) {
+      setRegistryPaths([...registryPaths, newPath]);
+      setNewPath('');
+    }
+  }
+
+  function removePath(path) {
+    setRegistryPaths(registryPaths.filter((p) => p !== path));
   }
 
   return (
@@ -204,20 +216,48 @@ function App() {
       {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-6">
         {currentScreen === 'monitor' ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            {registryPaths.map((path) => (
-              <div 
-                key={path} 
-                className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors"
-              >
-                <h3 className="font-mono text-xs text-gray-100 font-semibold mb-2 break-all">
-                  {path}
-                </h3>
-                <p className="text-gray-400 text-sm leading-relaxed">
-                  {REGISTRY_DESCRIPTIONS[path] || 'Registry key monitored for changes.'}
-                </p>
+          <div>
+            <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="HKEY_CURRENT_USER\Software\..."
+                  value={newPath}
+                  onChange={(e) => setNewPath(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && addPath()}
+                  className="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                />
+                <button 
+                  onClick={addPath}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-sm transition-colors"
+                >
+                  Add Key
+                </button>
               </div>
-            ))}
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {registryPaths.map((path) => (
+                <div 
+                  key={path} 
+                  className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <h3 className="font-mono text-xs text-gray-100 font-semibold break-all flex-1">
+                      {path}
+                    </h3>
+                    <button
+                      onClick={() => removePath(path)}
+                      className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <p className="text-gray-400 text-sm leading-relaxed">
+                    {REGISTRY_DESCRIPTIONS[path] || 'Registry key monitored for changes.'}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <div>
