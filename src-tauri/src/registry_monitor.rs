@@ -46,23 +46,31 @@ impl RegistryMonitor {
                 thread::sleep(Duration::from_millis(200)); // Check every 0.2 seconds
 
                 for path in &registry_paths {
-                    if let Ok(current_values) = read_registry_key(path) {
-                        let previous = previous_state.get(path);
+                    match read_registry_key(path) {
+                        Ok(current_values) => {
+                            let previous = previous_state.get(path);
 
-                        // Detect changes
-                        let changes = detect_changes(
-                            path,
-                            previous,
-                            &current_values,
-                        );
+                            // Detect changes
+                            let changes = detect_changes(
+                                path,
+                                previous,
+                                &current_values,
+                            );
 
-                        // Send changes to frontend
-                        for change in changes {
-                            let _ = window.emit("registry-change", &change);
-                            println!("Registry change detected: {:?}", change);
+                            // Send changes to frontend
+                            for change in &changes {
+                                let _ = window.emit("registry-change", &change);
+                                println!("Registry change detected: {:?}", change);
+                            }
+
+                            // Only update previous_state after successfully detecting and emitting changes
+                            // This ensures state consistency
+                            previous_state.insert(path.clone(), current_values);
                         }
-
-                        previous_state.insert(path.clone(), current_values);
+                        Err(e) => {
+                            // Log error but don't update previous_state to maintain consistency
+                            eprintln!("Error reading registry key {}: {:?}", path, e);
+                        }
                     }
                 }
             }
