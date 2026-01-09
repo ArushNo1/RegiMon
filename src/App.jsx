@@ -61,35 +61,61 @@ const REGISTRY_DESCRIPTIONS = {
 function App() {
   const [monitoring, setMonitoring] = useState(false);
   const [changes, setChanges] = useState([]);
-  const [registryPaths, setRegistryPaths] = useState(DEFAULT_REGISTRY_PATHS);
+  const [registryPaths, setRegistryPaths] = useState(() => {
+    // Try to load from localStorage first, then fall back to defaults
+    const saved = localStorage.getItem('registryPaths');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error('Failed to parse saved registry paths:', e);
+      }
+    }
+    return DEFAULT_REGISTRY_PATHS;
+  });
   const [currentScreen, setCurrentScreen] = useState('monitor'); // 'monitor' or 'changes'
   const [newPath, setNewPath] = useState('');
 
+  // Load registry paths from file on first mount (only if not already in localStorage)
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const regpaths = await fetch('registry-paths.json', { cache: 'no-cache' });
-        if(!regpaths.ok) throw new Error('Failed to fetch registry paths');
-
-        const text = await regpaths.text();
-        let paths;
+    const hasStoredPaths = localStorage.getItem('registryPaths');
+    
+    // Only load from file if there are no stored paths
+    if (!hasStoredPaths) {
+      (async () => {
         try {
-          const json = JSON.parse(text);
-          paths = Array.isArray(json) ? json : json.registryPaths;
-        } catch {
-          paths = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-        }
+          const regpaths = await fetch('registry-paths.json', { cache: 'no-cache' });
+          if(!regpaths.ok) throw new Error('Failed to fetch registry paths');
 
-        if(!cancelled){
-          setRegistryPaths(Array.isArray(paths) && paths.length ? paths : DEFAULT_REGISTRY_PATHS);
+          const text = await regpaths.text();
+          let paths;
+          try {
+            const json = JSON.parse(text);
+            paths = Array.isArray(json) ? json : json.registryPaths;
+          } catch {
+            paths = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+          }
+
+          if(!cancelled && Array.isArray(paths) && paths.length > 0){
+            setRegistryPaths(paths);
+            localStorage.setItem('registryPaths', JSON.stringify(paths));
+          }
+        } catch (e) {
+          console.error('Failed to load registry paths from file:', e);
         }
-      } catch {
-        if(!cancelled) setRegistryPaths(DEFAULT_REGISTRY_PATHS);
-      }
-    })();
+      })();
+    }
     return () => { cancelled = true; };
   }, []);
+
+  // Persist registry paths to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('registryPaths', JSON.stringify(registryPaths));
+  }, [registryPaths]);
 
   useEffect(() => {
     // Listen for registry changes
