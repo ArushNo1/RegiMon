@@ -3,66 +3,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import './App.css';
 
-const DEFAULT_REGISTRY_PATHS = [
-  'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
-  'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run',
-  'HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation'
-];
-
-const REGISTRY_DESCRIPTIONS = {
-  'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run': 
-    'Programs that run automatically when the current user logs in. Commonly used by malware for persistence.',
-  'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run': 
-    'Programs that run automatically for all users at startup. A critical location for system-wide persistence.',
-  'HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation': 
-    'System timezone settings. Changes may indicate tampering or system configuration modifications.',
-  'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce': 
-    'Programs that run once at next user login, then the entry is deleted.',
-  'HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce': 
-    'Programs that run once at next system startup for all users, then the entry is deleted.',
-  'HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnceEx': 
-    'Extended RunOnce functionality. Not created by default but Windows reads from it if present.',
-  'HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServices': 
-    'Legacy key for services to run at startup (Windows 9x/NT compatibility).',
-  'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServices': 
-    'Legacy key for user-specific services at startup (Windows 9x/NT compatibility).',
-  'HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServicesOnce': 
-    'Legacy key for one-time service execution at startup.',
-  'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServicesOnce': 
-    'Legacy key for one-time user-specific service execution.',
-  'HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\Run': 
-    'Group Policy-enforced startup programs. Harder for users to disable.',
-  'HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall': 
-    'Registry of installed programs. Modifications may indicate software installation or removal.',
-  'HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services': 
-    'All Windows services configuration. Critical for system functionality and security.',
-  'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks': 
-    'Scheduled tasks cache. Used by Task Scheduler for automated program execution.',
-  'HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon': 
-    'Login process configuration. Often targeted by malware to control user sessions.',
-  'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings': 
-    'Internet Explorer settings for current user including proxy configuration.',
-  'HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings': 
-    'System-wide Internet Explorer settings and proxy configuration.',
-  'HKEY_LOCAL_MACHINE\\Software\\Microsoft\\WBEM': 
-    'Windows Management Instrumentation settings. Used for system management and monitoring.',
-  'HKEY_CLASSES_ROOT\\CLSID': 
-    'COM class registrations. Modifications can redirect application behavior or enable attacks.',
-  'HKEY_LOCAL_MACHINE\\SECURITY\\Policy\\Secrets': 
-    'Sensitive security data including cached credentials and service account passwords.',
-  'HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa': 
-    'Local Security Authority configuration. Controls authentication and security policies.',
-  'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Windows\\AppInit_DLLs': 
-    'DLLs loaded into every process. Heavily abused by malware for code injection.',
-  'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options': 
-    'Debugging settings and executable redirections. Can be used to hijack program execution.'
-};
-
 function App() {
   const [monitoring, setMonitoring] = useState(false);
   const [changes, setChanges] = useState([]);
   const [registryPaths, setRegistryPaths] = useState(() => {
-    // Try to load from localStorage first, then fall back to defaults
+    // Try to load from localStorage first, then fall back to empty array
     const saved = localStorage.getItem('registryPaths');
     if (saved) {
       try {
@@ -74,12 +19,12 @@ function App() {
         console.error('Failed to parse saved registry paths:', e);
       }
     }
-    return DEFAULT_REGISTRY_PATHS;
+    return []; // Will be loaded from file in useEffect
   });
   const [currentScreen, setCurrentScreen] = useState('monitor'); // 'monitor' or 'changes'
   const [newPath, setNewPath] = useState('');
 
-  // Load registry paths from file on first mount (only if not already in localStorage)
+  // Load registry paths from file on first mount (only once, only if not in localStorage)
   useEffect(() => {
     let cancelled = false;
     const hasStoredPaths = localStorage.getItem('registryPaths');
@@ -88,17 +33,10 @@ function App() {
     if (!hasStoredPaths) {
       (async () => {
         try {
-          const regpaths = await fetch('registry-paths.json', { cache: 'no-cache' });
-          if(!regpaths.ok) throw new Error('Failed to fetch registry paths');
+          const response = await fetch('registry-paths.json', { cache: 'no-cache' });
+          if(!response.ok) throw new Error('Failed to fetch registry paths');
 
-          const text = await regpaths.text();
-          let paths;
-          try {
-            const json = JSON.parse(text);
-            paths = Array.isArray(json) ? json : json.registryPaths;
-          } catch {
-            paths = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-          }
+          const paths = await response.json();
 
           if(!cancelled && Array.isArray(paths) && paths.length > 0){
             setRegistryPaths(paths);
@@ -143,7 +81,9 @@ function App() {
 
   async function handleStartMonitoring() {
     try {
-      await invoke('start_monitoring', { paths: registryPaths });
+      // Extract just the keys for monitoring
+      const pathKeys = registryPaths.map(p => p.key);
+      await invoke('start_monitoring', { paths: pathKeys });
       setMonitoring(true);
     } catch (error) {
       console.error('Failed to start monitoring:', error);
@@ -160,14 +100,30 @@ function App() {
   }
 
   function addPath() {
-    if (newPath && !registryPaths.includes(newPath)) {
-      setRegistryPaths([...registryPaths, newPath]);
+    if (newPath && !registryPaths.some(p => p.key === newPath)) {
+      setRegistryPaths([...registryPaths, { key: newPath, description: 'Custom registry key added by user.' }]);
       setNewPath('');
     }
   }
 
-  function removePath(path) {
-    setRegistryPaths(registryPaths.filter((p) => p !== path));
+  function removePath(pathKey) {
+    setRegistryPaths(registryPaths.filter((p) => p.key !== pathKey));
+  }
+
+  async function reloadFromFile() {
+    try {
+      const response = await fetch('registry-paths.json', { cache: 'no-cache' });
+      if(!response.ok) throw new Error('Failed to fetch registry paths');
+
+      const paths = await response.json();
+
+      if(Array.isArray(paths) && paths.length > 0){
+        setRegistryPaths(paths);
+        localStorage.setItem('registryPaths', JSON.stringify(paths));
+      }
+    } catch (e) {
+      console.error('Failed to load registry paths from file:', e);
+    }
   }
 
   return (
@@ -244,7 +200,7 @@ function App() {
         {currentScreen === 'monitor' ? (
           <div>
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-4">
-              <div className="flex gap-2">
+              <div className="flex gap-2 mb-3">
                 <input
                   type="text"
                   placeholder="HKEY_CURRENT_USER\Software\..."
@@ -260,26 +216,32 @@ function App() {
                   Add Key
                 </button>
               </div>
+              <button 
+                onClick={reloadFromFile}
+                className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md font-medium text-sm transition-colors"
+              >
+                Reset to Default Paths
+              </button>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               {registryPaths.map((path) => (
                 <div 
-                  key={path} 
+                  key={path.key} 
                   className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <h3 className="font-mono text-xs text-gray-100 font-semibold break-all flex-1">
-                      {path}
+                      {path.key}
                     </h3>
                     <button
-                      onClick={() => removePath(path)}
+                      onClick={() => removePath(path.key)}
                       className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium transition-colors"
                     >
                       Remove
                     </button>
                   </div>
                   <p className="text-gray-400 text-sm leading-relaxed">
-                    {REGISTRY_DESCRIPTIONS[path] || 'Registry key monitored for changes.'}
+                    {path.description}
                   </p>
                 </div>
               ))}

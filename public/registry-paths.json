@@ -1,26 +1,90 @@
 [
-  "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-  "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
-  "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation",
-  "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce",
-  "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce",
-  "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnceEx",
-  "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServices",
-  "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServices",
-  "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServicesOnce",
-  "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServicesOnce",
-  "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\Run",
-  "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
-  "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services",
-  "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks",
-  "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
-  "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
-  "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
-  "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\WBEM",
-  "HKEY_CLASSES_ROOT\\CLSID",
-  "HKEY_LOCAL_MACHINE\\SECURITY\\Policy\\Secrets",
-  "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa",
-  "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Windows\\AppInit_DLLs",
-  "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options",
-  "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation"
+  {
+    "key": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+    "description": "Programs that run automatically when the current user logs in. Commonly used by malware for persistence."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+    "description": "Programs that run automatically for all users at startup. A critical location for system-wide persistence."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation",
+    "description": "System timezone settings. Changes may indicate tampering or system configuration modifications."
+  },
+  {
+    "key": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce",
+    "description": "Programs that run once at next user login, then the entry is deleted."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce",
+    "description": "Programs that run once at next system startup for all users, then the entry is deleted."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnceEx",
+    "description": "Extended RunOnce functionality. Not created by default but Windows reads from it if present."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServices",
+    "description": "Legacy key for services to run at startup (Windows 9x/NT compatibility)."
+  },
+  {
+    "key": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServices",
+    "description": "Legacy key for user-specific services at startup (Windows 9x/NT compatibility)."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServicesOnce",
+    "description": "Legacy key for one-time service execution at startup."
+  },
+  {
+    "key": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServicesOnce",
+    "description": "Legacy key for one-time user-specific service execution."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\Run",
+    "description": "Group Policy-enforced startup programs. Harder for users to disable."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+    "description": "Registry of installed programs. Modifications may indicate software installation or removal."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services",
+    "description": "All Windows services configuration. Critical for system functionality and security."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks",
+    "description": "Scheduled tasks cache. Used by Task Scheduler for automated program execution."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+    "description": "Login process configuration. Often targeted by malware to control user sessions."
+  },
+  {
+    "key": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
+    "description": "Internet Explorer settings for current user including proxy configuration."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
+    "description": "System-wide Internet Explorer settings and proxy configuration."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\WBEM",
+    "description": "Windows Management Instrumentation settings. Used for system management and monitoring."
+  },
+  {
+    "key": "HKEY_CLASSES_ROOT\\CLSID",
+    "description": "COM class registrations. Modifications can redirect application behavior or enable attacks."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa",
+    "description": "Local Security Authority configuration. Controls authentication and security policies."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Windows\\AppInit_DLLs",
+    "description": "DLLs loaded into every process. Heavily abused by malware for code injection."
+  },
+  {
+    "key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options",
+    "description": "Debugging settings and executable redirections. Can be used to hijack program execution."
+  }
 ]

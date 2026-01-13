@@ -2,9 +2,9 @@
 
 mod registry_monitor;
 
-use registry_monitor::{RegistryChange, RegistryMonitor};
+use registry_monitor::{RegistryMonitor};
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::{State};
 
 struct AppState {
     monitor: Mutex<RegistryMonitor>,

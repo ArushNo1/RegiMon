@@ -1,11 +1,11 @@
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use tauri::{Manager, Window, Emitter};
+use tauri::{Emitter, Window};
 use winreg::enums::*;
 use winreg::RegKey;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct RegistryChange {
@@ -29,12 +29,13 @@ impl RegistryMonitor {
     }
 
     pub fn start_monitoring(&self, window: Window, registry_paths: Vec<String>) {
-        self.monitoring.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.monitoring
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         let monitoring = self.monitoring.clone();
 
         thread::spawn(move || {
             let mut previous_state: HashMap<String, HashMap<String, String>> = HashMap::new();
-            
+
             // Initial scan
             for path in &registry_paths {
                 if let Ok(values) = read_registry_key(path) {
@@ -51,11 +52,7 @@ impl RegistryMonitor {
                             let previous = previous_state.get(path);
 
                             // Detect changes
-                            let changes = detect_changes(
-                                path,
-                                previous,
-                                &current_values,
-                            );
+                            let changes = detect_changes(path, previous, &current_values);
 
                             // Send changes to frontend
                             for change in &changes {
@@ -68,8 +65,10 @@ impl RegistryMonitor {
                             previous_state.insert(path.clone(), current_values);
                         }
                         Err(e) => {
-                            // Log error but don't update previous_state to maintain consistency
-                            eprintln!("Error reading registry key {}: {:?}", path, e);
+                            if !e.to_string().contains("The system") {
+                                // Log error but don't update previous_state to maintain consistency
+                                eprintln!("Error reading registry key {}: {:?}", path, e);
+                            }
                         }
                     }
                 }
@@ -78,7 +77,8 @@ impl RegistryMonitor {
     }
 
     pub fn stop_monitoring(&self) {
-        self.monitoring.store(false, std::sync::atomic::Ordering::SeqCst);
+        self.monitoring
+            .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
