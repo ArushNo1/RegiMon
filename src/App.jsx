@@ -6,6 +6,7 @@ import './App.css';
 function App() {
   const [monitoring, setMonitoring] = useState(false);
   const [changes, setChanges] = useState([]);
+  const [undoneChanges, setUndoneChanges] = useState(new Set());
   const [registryPaths, setRegistryPaths] = useState(() => {
     // Try to load from localStorage first, then fall back to empty array
     const saved = localStorage.getItem('registryPaths');
@@ -123,6 +124,26 @@ function App() {
       }
     } catch (e) {
       console.error('Failed to load registry paths from file:', e);
+    }
+  }
+
+  async function handleUndo(change, index) {
+    try {
+      const result = await invoke('undo_change', { change });
+      console.log('Undo successful:', result);
+      
+      // Mark this change as undone
+      setUndoneChanges(prev => new Set(prev).add(index));
+      
+      // Show notification
+      if (Notification.permission === 'granted') {
+        new Notification('Change Undone', {
+          body: result,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to undo change:', error);
+      alert(`Failed to undo change: ${error}`);
     }
   }
 
@@ -267,21 +288,39 @@ function App() {
                         : change.change_type === 'added'
                         ? 'border-l-green-500'
                         : 'border-l-red-500'
-                    }`}
+                    } ${undoneChanges.has(index) ? 'opacity-60' : ''}`}
                   >
                     <div className="flex items-start justify-between gap-4 mb-3">
-                      <span className={`px-2.5 py-1 rounded text-xs font-semibold uppercase ${
-                        change.change_type === 'modified' 
-                          ? 'bg-orange-500/20 text-orange-400' 
-                          : change.change_type === 'added'
-                          ? 'bg-green-500/20 text-green-400'
-                          : 'bg-red-500/20 text-red-400'
-                      }`}>
-                        {change.change_type}
-                      </span>
-                      <span className="text-gray-400 text-xs">
-                        {new Date(change.timestamp).toLocaleString()}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2.5 py-1 rounded text-xs font-semibold uppercase ${
+                          change.change_type === 'modified' 
+                            ? 'bg-orange-500/20 text-orange-400' 
+                            : change.change_type === 'added'
+                            ? 'bg-green-500/20 text-green-400'
+                            : 'bg-red-500/20 text-red-400'
+                        }`}>
+                          {change.change_type}
+                        </span>
+                        {undoneChanges.has(index) && (
+                          <span className="px-2.5 py-1 rounded text-xs font-semibold uppercase bg-blue-500/20 text-blue-400">
+                            UNDONE
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400 text-xs">
+                          {new Date(change.timestamp).toLocaleString()}
+                        </span>
+                        {!undoneChanges.has(index) && (
+                          <button
+                            onClick={() => handleUndo(change, index)}
+                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition-colors"
+                            title="Undo this change"
+                          >
+                            Undo
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-2 text-sm">
                       <div className="font-mono">

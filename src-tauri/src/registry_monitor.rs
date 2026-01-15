@@ -159,3 +159,128 @@ fn detect_changes(
 
     changes
 }
+
+#[tauri::command]
+pub fn undo_registry_change(change: RegistryChange) -> Result<String, String> {
+    // Parse the registry path
+    let parts: Vec<&str> = change.key_path.split('\\').collect();
+    if parts.is_empty() {
+        return Err("Invalid registry path".to_string());
+    }
+
+    let hive = match parts[0] {
+        "HKEY_LOCAL_MACHINE" | "HKLM" => RegKey::predef(HKEY_LOCAL_MACHINE),
+        "HKEY_CURRENT_USER" | "HKCU" => RegKey::predef(HKEY_CURRENT_USER),
+        "HKEY_CLASSES_ROOT" | "HKCR" => RegKey::predef(HKEY_CLASSES_ROOT),
+        _ => return Err("Unknown registry hive".to_string()),
+    };
+
+    let subkey_path = parts[1..].join("\\");
+    
+    // Open the key with write permissions
+    let key = hive
+        .open_subkey_with_flags(&subkey_path, KEY_WRITE | KEY_READ)
+        .map_err(|e| format!("Failed to open registry key: {}", e))?;
+
+    match change.change_type.as_str() {
+        "modified" => {
+            // Restore the old value
+            if let Some(old_value) = change.old_value {
+                set_registry_value(&key, &change.value_name, &old_value)?;
+                Ok(format!("Restored '{}' to previous value", change.value_name))
+            } else {
+                Err("No old value to restore".to_string())
+            }
+        }
+        "deleted" => {
+            // Recreate the deleted value
+            if let Some(old_value) = change.old_value {
+                set_registry_value(&key, &change.value_name, &old_value)?;
+                Ok(format!("Restored deleted value '{}'", change.value_name))
+            } else {
+                Err("No old value to restore".to_string())
+            }
+        }
+        "added" => {
+            // Delete the newly added value
+            key.delete_value(&change.value_name)
+                .map_err(|e| format!("Failed to delete value: {}", e))?;
+            Ok(format!("Removed added value '{}'", change.value_name))
+        }
+        _ => Err("Unknown change type".to_string()),
+    }
+}
+
+fn set_registry_value(key: &RegKey, value_name: &str, value_str: &str) -> Result<(), String> {
+    // Parse the value string format from winreg (e.g., "RegValue { bytes: [...], vtype: REG_SZ }")
+    // This is a simplified implementation - you may need to handle more types
+    
+    // Try to detect the value type from the string representation
+    if value_str.contains("REG_SZ") {
+        // Extract string value from the debug format
+        // For simplicity, we'll try to read the current value and write it back, or handle as string
+        let cleaned = extract_string_value(value_str);
+        key.set_value(value_name, &cleaned)
+            .map_err(|e| format!("Failed to set string value: {}", e))?;
+    } else if value_str.contains("REG_DWORD") {
+        // Extract DWORD value
+        let dword_val = extract_dword_value(value_str);
+        key.set_value(value_name, &dword_val)
+            .map_err(|e| format!("Failed to set DWORD value: {}", e))?;
+    } else {
+        // Try setting as string as fallback
+        key.set_value(value_name, &value_str)
+            .map_err(|e| format!("Failed to set value: {}", e))?;
+    }
+    
+    Ok(())
+}
+
+fn extract_string_value(debug_str: &str) -> String {
+    // This extracts string content from debug format like "RegValue { bytes: [72, 0, 101, ...], vtype: REG_SZ }"
+    // For a more robust solution, we would parse the bytes and convert them
+    
+    // Try to find bytes array and convert
+    if let Some(start) = debug_str.find("bytes: [") {
+        if let Some(end) = debug_str[start..].find("]") {
+            let bytes_str = &debug_str[start + 8..start + end];
+            let bytes: Vec<u8> = bytes_str
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            
+            // Try to convert bytes to UTF-16 string (common for REG_SZ)
+            if bytes.len() % 2 == 0 {
+                let u16_vec: Vec<u16> = bytes
+                    .chunks_exact(2)
+                    .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+                    .take_while(|&c| c != 0) // Stop at null terminator
+                    .collect();
+                
+                return String::from_utf16_lossy(&u16_vec);
+            }
+        }
+    }
+    
+    // Fallback to original string
+    debug_str.to_string()
+}
+
+fn extract_dword_value(debug_str: &str) -> u32 {
+    // Extract DWORD from debug format
+    if let Some(start) = debug_str.find("bytes: [") {
+        if let Some(end) = debug_str[start..].find("]") {
+            let bytes_str = &debug_str[start + 8..start + end];
+            let bytes: Vec<u8> = bytes_str
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            
+            if bytes.len() == 4 {
+                return u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+            }
+        }
+    }
+    
+    0 // Default fallback
+}

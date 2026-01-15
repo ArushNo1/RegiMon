@@ -17,12 +17,20 @@
         "width": 1200,
         "height": 800,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "visible": false,
+        "skipTaskbar": true
       }
     ],
     "security": {
       "csp": null,
       "capabilities": ["main-capability"]
+    },
+    "trayIcon": {
+      "id": "main-tray",
+      "iconPath": "icons/icon.ico",
+      "tooltip": "Registry Monitor",
+      "menuOnLeftClick": false
     }
   },
   "bundle": {
