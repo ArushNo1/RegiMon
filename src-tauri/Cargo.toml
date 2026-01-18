@@ -13,6 +13,7 @@ serde_json = "1.0"
 winreg = "0.52"
 tokio = { version = "1", features = ["full"] }
 chrono = "0.4"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_System_Threading"] }
 
 [features]
 default = ["custom-protocol"]

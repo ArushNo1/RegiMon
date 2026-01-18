@@ -6,7 +6,7 @@ import './App.css';
 function App() {
   const [monitoring, setMonitoring] = useState(false);
   const [changes, setChanges] = useState([]);
-  const [undoneChanges, setUndoneChanges] = useState(new Set());
+  const [undoneChanges, setUndoneChanges] = useState(new Set()); // Stores unique change IDs
   const [registryPaths, setRegistryPaths] = useState(() => {
     // Try to load from localStorage first, then fall back to empty array
     const saved = localStorage.getItem('registryPaths');
@@ -60,7 +60,12 @@ function App() {
     // Listen for registry changes
     const unlisten = listen('registry-change', (event) => {
       const change = event.payload;
-      setChanges((prev) => [change, ...prev].slice(0, 100)); // Keep last 100 changes
+      // Add a unique ID to each change based on its properties and timestamp
+      const changeWithId = {
+        ...change,
+        id: `${change.key_path}_${change.value_name}_${change.timestamp}`
+      };
+      setChanges((prev) => [changeWithId, ...prev].slice(0, 100)); // Keep last 100 changes
       
       // Show browser notification
       if (Notification.permission === 'granted') {
@@ -127,13 +132,13 @@ function App() {
     }
   }
 
-  async function handleUndo(change, index) {
+  async function handleUndo(change) {
     try {
       const result = await invoke('undo_change', { change });
       console.log('Undo successful:', result);
       
-      // Mark this change as undone
-      setUndoneChanges(prev => new Set(prev).add(index));
+      // Mark this change as undone using its unique ID
+      setUndoneChanges(prev => new Set(prev).add(change.id));
       
       // Show notification
       if (Notification.permission === 'granted') {
@@ -146,6 +151,23 @@ function App() {
       alert(`Failed to undo change: ${error}`);
     }
   }
+
+  function clearChanges() {
+    setChanges([]);
+    setUndoneChanges(new Set());
+  }
+
+  function getChangesCount() {
+    let x = 0;
+    for (const change of changes) {
+      if(!undoneChanges.has(change.id)){
+        x += 1;
+      }
+    }
+    return x;
+  }
+
+  const changesCount = getChangesCount();
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -206,9 +228,9 @@ function App() {
               }`}
             >
               Recent Changes
-              {changes.length > 0 && (
+              {changesCount > 0 && (
                 <span className="ml-2 px-2 py-0.5 bg-red-600 text-white text-xs rounded-full font-medium">
-                  {changes.length}
+                  {changesCount}
                 </span>
               )}
             </button>
@@ -278,17 +300,26 @@ function App() {
                 </p>
               </div>
             ) : (
+              <div>
+                <div className="flex justify-end mb-4">
+                  <button
+                    onClick={clearChanges}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium text-sm transition-colors"
+                  >
+                    Clear All Changes
+                  </button>
+                </div>
               <div className="space-y-3">
                 {changes.map((change, index) => (
                   <div 
-                    key={index} 
+                    key={change.id || index}
                     className={`bg-gray-800 border-l-4 border border-gray-700 rounded-lg p-4 ${
                       change.change_type === 'modified' 
                         ? 'border-l-orange-500' 
                         : change.change_type === 'added'
                         ? 'border-l-green-500'
                         : 'border-l-red-500'
-                    } ${undoneChanges.has(index) ? 'opacity-60' : ''}`}
+                    } ${undoneChanges.has(change.id) ? 'opacity-60' : ''}`}
                   >
                     <div className="flex items-start justify-between gap-4 mb-3">
                       <div className="flex items-center gap-2">
@@ -301,7 +332,7 @@ function App() {
                         }`}>
                           {change.change_type}
                         </span>
-                        {undoneChanges.has(index) && (
+                        {undoneChanges.has(change.id) && (
                           <span className="px-2.5 py-1 rounded text-xs font-semibold uppercase bg-blue-500/20 text-blue-400">
                             UNDONE
                           </span>
@@ -311,9 +342,9 @@ function App() {
                         <span className="text-gray-400 text-xs">
                           {new Date(change.timestamp).toLocaleString()}
                         </span>
-                        {!undoneChanges.has(index) && (
+                        {!undoneChanges.has(change.id) && (
                           <button
-                            onClick={() => handleUndo(change, index)}
+                            onClick={() => handleUndo(change)}
                             className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition-colors"
                             title="Undo this change"
                           >
@@ -347,6 +378,7 @@ function App() {
                   </div>
                 ))}
               </div>
+            </div>
             )}
           </div>
         )}

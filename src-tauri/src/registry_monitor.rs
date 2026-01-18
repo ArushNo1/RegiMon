@@ -1,10 +1,16 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::{Emitter, Window};
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
+use windows_sys::Win32::System::Registry::{
+    RegNotifyChangeKeyValue, REG_NOTIFY_CHANGE_LAST_SET, REG_NOTIFY_THREAD_AGNOSTIC,
+};
+use windows_sys::Win32::System::Threading::{CreateEventW, WaitForMultipleObjects};
 use winreg::enums::*;
+use winreg::types::ToRegValue;
 use winreg::RegKey;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -19,12 +25,14 @@ pub struct RegistryChange {
 
 pub struct RegistryMonitor {
     monitoring: Arc<std::sync::atomic::AtomicBool>,
+    ignored_changes: Arc<Mutex<HashSet<String>>>,
 }
 
 impl RegistryMonitor {
     pub fn new() -> Self {
         Self {
             monitoring: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            ignored_changes: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -32,21 +40,51 @@ impl RegistryMonitor {
         self.monitoring
             .store(true, std::sync::atomic::Ordering::SeqCst);
         let monitoring = self.monitoring.clone();
+        let ignored_changes = self.ignored_changes.clone();
 
         thread::spawn(move || {
             let mut previous_state: HashMap<String, HashMap<String, String>> = HashMap::new();
+            let mut key_handles: Vec<(RegKey, HANDLE)> = Vec::new();
 
-            // Initial scan
+            // Initial scan and setup event notifications
             for path in &registry_paths {
                 if let Ok(values) = read_registry_key(path) {
                     previous_state.insert(path.clone(), values);
                 }
+
+                // Open registry key and create event for notification
+                if let Ok((reg_key, event)) = setup_registry_notification(path) {
+                    key_handles.push((reg_key, event));
+                }
             }
 
-            while monitoring.load(std::sync::atomic::Ordering::SeqCst) {
-                thread::sleep(Duration::from_millis(200)); // Check every 0.2 seconds
+            if key_handles.is_empty() {
+                eprintln!("Failed to setup any registry notifications");
+                return;
+            }
 
-                for path in &registry_paths {
+            let events: Vec<HANDLE> = key_handles.iter().map(|(_, event)| *event).collect();
+
+            while monitoring.load(std::sync::atomic::Ordering::SeqCst) {
+                // Wait for any registry change event (with 1 second timeout)
+                let wait_result = unsafe {
+                    WaitForMultipleObjects(
+                        events.len() as u32,
+                        events.as_ptr(),
+                        0,    // FALSE - wait for any event
+                        1000, // 1 second timeout
+                    )
+                };
+
+                if wait_result == WAIT_TIMEOUT {
+                    continue;
+                }
+
+                // Check which key changed
+                let changed_index = wait_result.wrapping_sub(WAIT_OBJECT_0) as usize;
+                if changed_index < registry_paths.len() {
+                    let path = &registry_paths[changed_index];
+
                     match read_registry_key(path) {
                         Ok(current_values) => {
                             let previous = previous_state.get(path);
@@ -54,23 +92,51 @@ impl RegistryMonitor {
                             // Detect changes
                             let changes = detect_changes(path, previous, &current_values);
 
+                            // Filter out ignored changes
+                            let ignored = ignored_changes.lock().unwrap();
+                            let filtered_changes: Vec<_> = changes
+                                .into_iter()
+                                .filter(|change| {
+                                    let key = format!("{}::{}", change.key_path, change.value_name);
+                                    !ignored.contains(&key)
+                                })
+                                .collect();
+                            drop(ignored);
+
                             // Send changes to frontend
-                            for change in &changes {
+                            for change in &filtered_changes {
                                 let _ = window.emit("registry-change", &change);
-                                println!("Registry change detected: {:?}", change);
                             }
 
-                            // Only update previous_state after successfully detecting and emitting changes
-                            // This ensures state consistency
+                            // Update previous state
                             previous_state.insert(path.clone(), current_values);
                         }
                         Err(e) => {
                             if !e.to_string().contains("The system") {
-                                // Log error but don't update previous_state to maintain consistency
                                 eprintln!("Error reading registry key {}: {:?}", path, e);
                             }
                         }
                     }
+
+                    // Re-register for next notification
+                    if let Some((reg_key, event)) = key_handles.get_mut(changed_index) {
+                        unsafe {
+                            RegNotifyChangeKeyValue(
+                                reg_key.raw_handle() as *mut std::ffi::c_void,
+                                0, // FALSE - don't watch subtree
+                                REG_NOTIFY_CHANGE_LAST_SET | REG_NOTIFY_THREAD_AGNOSTIC,
+                                *event,
+                                1, // TRUE - asynchronous
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Cleanup
+            for (_, event) in key_handles {
+                unsafe {
+                    CloseHandle(event);
                 }
             }
         });
@@ -80,6 +146,53 @@ impl RegistryMonitor {
         self.monitoring
             .store(false, std::sync::atomic::Ordering::SeqCst);
     }
+
+    pub fn get_ignored_changes(&self) -> Arc<Mutex<HashSet<String>>> {
+        self.ignored_changes.clone()
+    }
+}
+
+fn setup_registry_notification(path: &str) -> Result<(RegKey, HANDLE), Box<dyn std::error::Error>> {
+    let parts: Vec<&str> = path.split('\\').collect();
+    if parts.is_empty() {
+        return Err("Invalid registry path".into());
+    }
+
+    let hive = match parts[0] {
+        "HKEY_LOCAL_MACHINE" | "HKLM" => RegKey::predef(HKEY_LOCAL_MACHINE),
+        "HKEY_CURRENT_USER" | "HKCU" => RegKey::predef(HKEY_CURRENT_USER),
+        "HKEY_CLASSES_ROOT" | "HKCR" => RegKey::predef(HKEY_CLASSES_ROOT),
+        _ => return Err("Unknown registry hive".into()),
+    };
+
+    let subkey_path = parts[1..].join("\\");
+    let key = hive.open_subkey_with_flags(&subkey_path, KEY_NOTIFY | KEY_READ)?;
+
+    // Create event for notification
+    let event = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
+    if event.is_null() {
+        return Err("Failed to create event".into());
+    }
+
+    // Register for notifications
+    let result = unsafe {
+        RegNotifyChangeKeyValue(
+            key.raw_handle() as *mut std::ffi::c_void,
+            0, // FALSE - don't watch subtree
+            REG_NOTIFY_CHANGE_LAST_SET | REG_NOTIFY_THREAD_AGNOSTIC,
+            event,
+            1, // TRUE - asynchronous
+        )
+    };
+
+    if result != 0 {
+        unsafe {
+            CloseHandle(event);
+        }
+        return Err(format!("RegNotifyChangeKeyValue failed with code {}", result).into());
+    }
+
+    Ok((key, event))
 }
 
 fn read_registry_key(path: &str) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
@@ -161,7 +274,17 @@ fn detect_changes(
 }
 
 #[tauri::command]
-pub fn undo_registry_change(change: RegistryChange) -> Result<String, String> {
+pub fn undo_registry_change(
+    change: RegistryChange,
+    ignored_changes: Arc<Mutex<HashSet<String>>>,
+) -> Result<String, String> {
+    // Mark this change as ignored to prevent detection loop
+    let change_key = format!("{}::{}", change.key_path, change.value_name);
+    {
+        let mut ignored = ignored_changes.lock().unwrap();
+        ignored.insert(change_key.clone());
+    }
+
     // Parse the registry path
     let parts: Vec<&str> = change.key_path.split('\\').collect();
     if parts.is_empty() {
@@ -176,7 +299,7 @@ pub fn undo_registry_change(change: RegistryChange) -> Result<String, String> {
     };
 
     let subkey_path = parts[1..].join("\\");
-    
+
     // Open the key with write permissions
     let key = hive
         .open_subkey_with_flags(&subkey_path, KEY_WRITE | KEY_READ)
@@ -187,7 +310,19 @@ pub fn undo_registry_change(change: RegistryChange) -> Result<String, String> {
             // Restore the old value
             if let Some(old_value) = change.old_value {
                 set_registry_value(&key, &change.value_name, &old_value)?;
-                Ok(format!("Restored '{}' to previous value", change.value_name))
+
+                // Wait briefly, then clear ignored status
+                let ignored = ignored_changes.clone();
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_millis(500));
+                    let mut ignored = ignored.lock().unwrap();
+                    ignored.remove(&change_key);
+                });
+
+                Ok(format!(
+                    "Restored '{}' to previous value",
+                    change.value_name
+                ))
             } else {
                 Err("No old value to restore".to_string())
             }
@@ -196,6 +331,15 @@ pub fn undo_registry_change(change: RegistryChange) -> Result<String, String> {
             // Recreate the deleted value
             if let Some(old_value) = change.old_value {
                 set_registry_value(&key, &change.value_name, &old_value)?;
+
+                // Wait briefly, then clear ignored status
+                let ignored = ignored_changes.clone();
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_millis(500));
+                    let mut ignored = ignored.lock().unwrap();
+                    ignored.remove(&change_key);
+                });
+
                 Ok(format!("Restored deleted value '{}'", change.value_name))
             } else {
                 Err("No old value to restore".to_string())
@@ -205,6 +349,15 @@ pub fn undo_registry_change(change: RegistryChange) -> Result<String, String> {
             // Delete the newly added value
             key.delete_value(&change.value_name)
                 .map_err(|e| format!("Failed to delete value: {}", e))?;
+
+            // Wait briefly, then clear ignored status
+            let ignored = ignored_changes.clone();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(500));
+                let mut ignored = ignored.lock().unwrap();
+                ignored.remove(&change_key);
+            });
+
             Ok(format!("Removed added value '{}'", change.value_name))
         }
         _ => Err("Unknown change type".to_string()),
@@ -212,75 +365,54 @@ pub fn undo_registry_change(change: RegistryChange) -> Result<String, String> {
 }
 
 fn set_registry_value(key: &RegKey, value_name: &str, value_str: &str) -> Result<(), String> {
-    // Parse the value string format from winreg (e.g., "RegValue { bytes: [...], vtype: REG_SZ }")
-    // This is a simplified implementation - you may need to handle more types
-    
-    // Try to detect the value type from the string representation
+    if !value_str.starts_with("RegValue") {
+        return Err("Unsupported value format".to_string());
+    }
+
+    let value_str = value_str
+        .trim_start_matches("RegValue(")
+        .trim_end_matches(")");
+
     if value_str.contains("REG_SZ") {
-        // Extract string value from the debug format
-        // For simplicity, we'll try to read the current value and write it back, or handle as string
-        let cleaned = extract_string_value(value_str);
+        let cleaned = value_str.trim_start_matches("REG_SZ: ");
         key.set_value(value_name, &cleaned)
             .map_err(|e| format!("Failed to set string value: {}", e))?;
     } else if value_str.contains("REG_DWORD") {
-        // Extract DWORD value
-        let dword_val = extract_dword_value(value_str);
+        let cleaned = value_str.trim_start_matches("REG_DWORD: ");
+        let dword_val: u32 = cleaned
+            .parse()
+            .map_err(|e| format!("Failed to parse DWORD value: {}", e))?;
         key.set_value(value_name, &dword_val)
             .map_err(|e| format!("Failed to set DWORD value: {}", e))?;
+    } else if value_str.contains("REG_QWORD") {
+        let cleaned = value_str.trim_start_matches("REG_QWORD: ");
+        let qword_val: u64 = cleaned
+            .parse()
+            .map_err(|e| format!("Failed to parse QWORD value: {}", e))?;
+        key.set_value(value_name, &qword_val)
+            .map_err(|e| format!("Failed to set QWORD value: {}", e))?;
+    } else if value_str.contains("REG_BINARY") {
+        let cleaned = value_str.trim_start_matches("REG_BINARY: ");
+        let bytes_str = cleaned.trim_start_matches('[').trim_end_matches(']');
+        let bytes: Result<Vec<u8>, _> = bytes_str
+            .split(',')
+            .map(|s| s.trim().parse::<u8>())
+            .collect();
+        match bytes {
+            Ok(byte_vec) => {key.set_raw_value(
+                value_name,
+                &winreg::RegValue {
+                    vtype: winreg::enums::RegType::REG_BINARY,
+                    bytes: byte_vec,
+                }).map_err(|e| format!("Failed to set binary value: {}", e))?;
+        }
+            Err(e) => {
+                return Err(format!("Failed to parse binary value: {}", e));
+            }
+        }
     } else {
-        // Try setting as string as fallback
-        key.set_value(value_name, &value_str)
-            .map_err(|e| format!("Failed to set value: {}", e))?;
+        return Err("Unsupported registry value type".to_string());
     }
-    
+
     Ok(())
-}
-
-fn extract_string_value(debug_str: &str) -> String {
-    // This extracts string content from debug format like "RegValue { bytes: [72, 0, 101, ...], vtype: REG_SZ }"
-    // For a more robust solution, we would parse the bytes and convert them
-    
-    // Try to find bytes array and convert
-    if let Some(start) = debug_str.find("bytes: [") {
-        if let Some(end) = debug_str[start..].find("]") {
-            let bytes_str = &debug_str[start + 8..start + end];
-            let bytes: Vec<u8> = bytes_str
-                .split(',')
-                .filter_map(|s| s.trim().parse().ok())
-                .collect();
-            
-            // Try to convert bytes to UTF-16 string (common for REG_SZ)
-            if bytes.len() % 2 == 0 {
-                let u16_vec: Vec<u16> = bytes
-                    .chunks_exact(2)
-                    .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-                    .take_while(|&c| c != 0) // Stop at null terminator
-                    .collect();
-                
-                return String::from_utf16_lossy(&u16_vec);
-            }
-        }
-    }
-    
-    // Fallback to original string
-    debug_str.to_string()
-}
-
-fn extract_dword_value(debug_str: &str) -> u32 {
-    // Extract DWORD from debug format
-    if let Some(start) = debug_str.find("bytes: [") {
-        if let Some(end) = debug_str[start..].find("]") {
-            let bytes_str = &debug_str[start + 8..start + end];
-            let bytes: Vec<u8> = bytes_str
-                .split(',')
-                .filter_map(|s| s.trim().parse().ok())
-                .collect();
-            
-            if bytes.len() == 4 {
-                return u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-            }
-        }
-    }
-    
-    0 // Default fallback
 }

@@ -25,12 +25,6 @@
     "security": {
       "csp": null,
       "capabilities": ["main-capability"]
-    },
-    "trayIcon": {
-      "id": "main-tray",
-      "iconPath": "icons/icon.ico",
-      "tooltip": "Registry Monitor",
-      "menuOnLeftClick": false
     }
   },
   "bundle": {

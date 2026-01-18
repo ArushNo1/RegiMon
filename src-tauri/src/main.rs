@@ -35,8 +35,10 @@ fn read_registry_value(path: String, value_name: String) -> Result<String, Strin
 }
 
 #[tauri::command]
-fn undo_change(change: RegistryChange) -> Result<String, String> {
-    registry_monitor::undo_registry_change(change)
+fn undo_change(state: State<AppState>, change: RegistryChange) -> Result<String, String> {
+    let monitor = state.monitor.lock().unwrap();
+    let ignored_changes = monitor.get_ignored_changes();
+    registry_monitor::undo_registry_change(change, ignored_changes)
 }
 
 fn main() {
@@ -64,7 +66,7 @@ fn main() {
                 .build()?;
 
             // Build the tray icon
-            let _tray = TrayIconBuilder::with_id("main-tray")
+            let tray = TrayIconBuilder::with_id("main-tray")
                 .tooltip("Registry Monitor")
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
@@ -82,7 +84,8 @@ fn main() {
                             }
                         }
                         "quit" => {
-                            app.exit(0);
+                            // Properly clean up and exit
+                            std::process::exit(0);
                         }
                         _ => {}
                     }
@@ -103,6 +106,9 @@ fn main() {
                     }
                 })
                 .build(app)?;
+
+            // Store tray icon in app state to ensure proper cleanup
+            app.manage(tray);
 
             // Show the window initially
             if let Some(window) = app.get_webview_window("main") {
