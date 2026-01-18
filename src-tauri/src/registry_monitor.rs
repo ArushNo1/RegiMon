@@ -4,13 +4,17 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::{Emitter, Window};
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT, GetLastError};
 use windows_sys::Win32::System::Registry::{
     RegNotifyChangeKeyValue, REG_NOTIFY_CHANGE_LAST_SET, REG_NOTIFY_THREAD_AGNOSTIC,
 };
-use windows_sys::Win32::System::Threading::{CreateEventW, WaitForMultipleObjects};
+use windows_sys::Win32::System::Threading::{CreateEventW, WaitForMultipleObjects, OpenProcessToken, GetCurrentProcess};
+use windows_sys::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_QUERY, TOKEN_ELEVATION};
+use windows_sys::Win32::UI::Shell::ShellExecuteW;
+use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOW;
+use std::ffi::OsStr;
+use std::os::windows::ffi::OsStrExt;
 use winreg::enums::*;
-use winreg::types::ToRegValue;
 use winreg::RegKey;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -415,4 +419,94 @@ fn set_registry_value(key: &RegKey, value_name: &str, value_str: &str) -> Result
     }
 
     Ok(())
+}
+
+// Check if the current process is running with administrator privileges
+#[tauri::command]
+pub fn is_elevated() -> bool {
+    unsafe {
+        let mut token_handle: HANDLE = std::ptr::null_mut();
+        
+        // Open the process token
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token_handle) == 0 {
+            return false;
+        }
+        
+        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+        let mut return_length: u32 = 0;
+        
+        // Get the elevation information
+        let result = GetTokenInformation(
+            token_handle,
+            TokenElevation,
+            &mut elevation as *mut _ as *mut _,
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut return_length,
+        );
+        
+        CloseHandle(token_handle);
+        
+        if result == 0 {
+            return false;
+        }
+        
+        elevation.TokenIsElevated != 0
+    }
+}
+
+// Check if a registry path requires admin privileges
+#[tauri::command]
+pub fn requires_admin(path: String) -> bool {
+    let parts: Vec<&str> = path.split('\\').collect();
+    if parts.is_empty() {
+        return false;
+    }
+    
+    // HKCU doesn't require admin, but HKLM and HKCR typically do
+    match parts[0] {
+        "HKEY_LOCAL_MACHINE" | "HKLM" => true,
+        "HKEY_CLASSES_ROOT" | "HKCR" => true,
+        "HKEY_CURRENT_USER" | "HKCU" => false,
+        _ => false,
+    }
+}
+
+// Request elevation by restarting the application with administrator privileges
+#[tauri::command]
+pub fn request_elevation() -> Result<String, String> {
+    unsafe {
+        // Get the current executable path
+        let exe_path = std::env::current_exe()
+            .map_err(|e| format!("Failed to get executable path: {}", e))?;
+        
+        // Convert path to wide string for Windows API
+        let exe_path_wide: Vec<u16> = OsStr::new(exe_path.to_str().unwrap())
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        
+        let operation: Vec<u16> = OsStr::new("runas")
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        
+        // Use ShellExecuteW with "runas" verb to trigger UAC elevation prompt
+        let result = ShellExecuteW(
+            std::ptr::null_mut(),
+            operation.as_ptr(),
+            exe_path_wide.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOW,
+        );
+        
+        // ShellExecuteW returns a value > 32 on success
+        if result as isize > 32 {
+            // Exit the current non-elevated process
+            std::process::exit(0);
+        } else {
+            let error = GetLastError();
+            Err(format!("Failed to request elevation. Error code: {}", error))
+        }
+    }
 }

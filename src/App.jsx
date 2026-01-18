@@ -7,6 +7,8 @@ function App() {
   const [monitoring, setMonitoring] = useState(false);
   const [changes, setChanges] = useState([]);
   const [undoneChanges, setUndoneChanges] = useState(new Set()); // Stores unique change IDs
+  const [isElevated, setIsElevated] = useState(true); // Assume elevated by default
+  const [hasAdminPaths, setHasAdminPaths] = useState(false); // Tracks if any paths require admin
   const [registryPaths, setRegistryPaths] = useState(() => {
     // Try to load from localStorage first, then fall back to empty array
     const saved = localStorage.getItem('registryPaths');
@@ -24,6 +26,39 @@ function App() {
   });
   const [currentScreen, setCurrentScreen] = useState('monitor'); // 'monitor' or 'changes'
   const [newPath, setNewPath] = useState('');
+
+  // Check admin status on mount
+  useEffect(() => {
+    async function checkElevation() {
+      try {
+        const elevated = await invoke('is_elevated');
+        setIsElevated(elevated);
+      } catch (error) {
+        console.error('Failed to check elevation:', error);
+      }
+    }
+    checkElevation();
+  }, []);
+
+  // Check if any paths require admin whenever paths change
+  useEffect(() => {
+    async function checkAdminRequirement() {
+      try {
+        const checks = await Promise.all(
+          registryPaths.map(async (p) => {
+            const requiresAdmin = await invoke('requires_admin', { path: p.key });
+            return requiresAdmin;
+          })
+        );
+        setHasAdminPaths(checks.some(req => req));
+      } catch (error) {
+        console.error('Failed to check admin requirements:', error);
+      }
+    }
+    if (registryPaths.length > 0) {
+      checkAdminRequirement();
+    }
+  }, [registryPaths]);
 
   // Load registry paths from file on first mount (only once, only if not in localStorage)
   useEffect(() => {
@@ -157,6 +192,16 @@ function App() {
     setUndoneChanges(new Set());
   }
 
+  async function handleRequestElevation() {
+    try {
+      await invoke('request_elevation');
+      // If successful, the app will restart with elevated privileges
+    } catch (error) {
+      console.error('Failed to request elevation:', error);
+      alert(`Failed to request elevation: ${error}`);
+    }
+  }
+
   function getChangesCount() {
     let x = 0;
     for (const change of changes) {
@@ -240,6 +285,35 @@ function App() {
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-6">
+        {/* Admin Warning Banner */}
+        {!isElevated && hasAdminPaths && (
+          <div className="bg-yellow-900 border border-yellow-700 rounded-lg p-4 mb-4">
+            <div className="flex items-start gap-3">
+              <svg className="w-6 h-6 text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div className="flex-1">
+                <h3 className="text-yellow-200 font-semibold mb-1">Limited Privileges</h3>
+                <p className="text-yellow-100 text-sm mb-3">
+                  The application is currently running without administrator privileges. 
+                  Only registry keys in <span className="font-mono font-semibold">HKEY_CURRENT_USER (HKCU)</span> can be monitored and modified. 
+                  To monitor and modify <span className="font-mono font-semibold">HKEY_LOCAL_MACHINE (HKLM)</span> or <span className="font-mono font-semibold">HKEY_CLASSES_ROOT (HKCR)</span>, 
+                  administrator privileges are required.
+                </p>
+                <button
+                  onClick={handleRequestElevation}
+                  className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md font-medium text-sm transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  Request Administrator Privileges
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {currentScreen === 'monitor' ? (
           <div>
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-4">

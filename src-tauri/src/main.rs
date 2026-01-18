@@ -50,7 +50,10 @@ fn main() {
             start_monitoring,
             stop_monitoring,
             read_registry_value,
-            undo_change
+            undo_change,
+            registry_monitor::is_elevated,
+            registry_monitor::requires_admin,
+            registry_monitor::request_elevation
         ])
         .setup(|app| {
             // Build the tray menu
