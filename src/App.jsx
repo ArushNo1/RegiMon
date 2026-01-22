@@ -101,19 +101,7 @@ function App() {
         id: `${change.key_path}_${change.value_name}_${change.timestamp}`
       };
       setChanges((prev) => [changeWithId, ...prev].slice(0, 100)); // Keep last 100 changes
-      
-      // Show browser notification
-      if (Notification.permission === 'granted') {
-        new Notification('Registry Change Detected', {
-          body: `${change.change_type}: ${change.value_name} in ${change.key_path}`,
-        });
-      }
     });
-
-    // Request notification permission
-    if (Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
 
     return () => {
       unlisten.then((fn) => fn());
@@ -140,15 +128,38 @@ function App() {
     }
   }
 
-  function addPath() {
+  async function addPath() {
     if (newPath && !registryPaths.some(p => p.key === newPath)) {
       setRegistryPaths([...registryPaths, { key: newPath, description: 'Custom registry key added by user.' }]);
       setNewPath('');
+      
+      // If monitoring is active, restart it with the new path list
+      if (monitoring) {
+        try {
+          await invoke('stop_monitoring');
+          const pathKeys = [...registryPaths, { key: newPath, description: 'Custom registry key added by user.' }].map(p => p.key);
+          await invoke('start_monitoring', { paths: pathKeys });
+        } catch (error) {
+          console.error('Failed to restart monitoring with new path:', error);
+        }
+      }
     }
   }
 
-  function removePath(pathKey) {
-    setRegistryPaths(registryPaths.filter((p) => p.key !== pathKey));
+  async function removePath(pathKey) {
+    const newPaths = registryPaths.filter((p) => p.key !== pathKey);
+    setRegistryPaths(newPaths);
+    
+    // If monitoring is active, restart it with the updated path list
+    if (monitoring) {
+      try {
+        await invoke('stop_monitoring');
+        const pathKeys = newPaths.map(p => p.key);
+        await invoke('start_monitoring', { paths: pathKeys });
+      } catch (error) {
+        console.error('Failed to restart monitoring after removing path:', error);
+      }
+    }
   }
 
   async function reloadFromFile() {
@@ -174,13 +185,6 @@ function App() {
       
       // Mark this change as undone using its unique ID
       setUndoneChanges(prev => new Set(prev).add(change.id));
-      
-      // Show notification
-      if (Notification.permission === 'granted') {
-        new Notification('Change Undone', {
-          body: result,
-        });
-      }
     } catch (error) {
       console.error('Failed to undo change:', error);
       alert(`Failed to undo change: ${error}`);

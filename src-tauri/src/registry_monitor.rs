@@ -48,7 +48,7 @@ impl RegistryMonitor {
 
         thread::spawn(move || {
             let mut previous_state: HashMap<String, HashMap<String, String>> = HashMap::new();
-            let mut key_handles: Vec<(RegKey, HANDLE)> = Vec::new();
+            let mut key_handles: Vec<(String, RegKey, HANDLE)> = Vec::new();
 
             // Initial scan and setup event notifications
             for path in &registry_paths {
@@ -57,8 +57,9 @@ impl RegistryMonitor {
                 }
 
                 // Open registry key and create event for notification
-                if let Ok((reg_key, event)) = setup_registry_notification(path) {
-                    key_handles.push((reg_key, event));
+                match setup_registry_notification(path) {
+                    Ok((reg_key, event)) => key_handles.push((path.clone(), reg_key, event)),
+                    Err(e) => eprintln!("Failed to monitor {}: {}", path, e),
                 }
             }
 
@@ -67,7 +68,7 @@ impl RegistryMonitor {
                 return;
             }
 
-            let events: Vec<HANDLE> = key_handles.iter().map(|(_, event)| *event).collect();
+            let events: Vec<HANDLE> = key_handles.iter().map(|(_, _, event)| *event).collect();
 
             while monitoring.load(std::sync::atomic::Ordering::SeqCst) {
                 // Wait for any registry change event (with 1 second timeout)
@@ -86,8 +87,11 @@ impl RegistryMonitor {
 
                 // Check which key changed
                 let changed_index = wait_result.wrapping_sub(WAIT_OBJECT_0) as usize;
-                if changed_index < registry_paths.len() {
-                    let path = &registry_paths[changed_index];
+                if changed_index < key_handles.len() {
+                    let (path, reg_key, event) = match key_handles.get_mut(changed_index) {
+                        Some(tuple) => tuple,
+                        None => continue,
+                    };
 
                     match read_registry_key(path) {
                         Ok(current_values) => {
@@ -123,22 +127,20 @@ impl RegistryMonitor {
                     }
 
                     // Re-register for next notification
-                    if let Some((reg_key, event)) = key_handles.get_mut(changed_index) {
-                        unsafe {
-                            RegNotifyChangeKeyValue(
-                                reg_key.raw_handle() as *mut std::ffi::c_void,
-                                0, // FALSE - don't watch subtree
-                                REG_NOTIFY_CHANGE_LAST_SET | REG_NOTIFY_THREAD_AGNOSTIC,
-                                *event,
-                                1, // TRUE - asynchronous
-                            );
-                        }
+                    unsafe {
+                        RegNotifyChangeKeyValue(
+                            reg_key.raw_handle() as *mut std::ffi::c_void,
+                            1, // TRUE - watch subtree so nested changes trigger
+                            REG_NOTIFY_CHANGE_LAST_SET | REG_NOTIFY_THREAD_AGNOSTIC,
+                            *event,
+                            1, // TRUE - asynchronous
+                        );
                     }
                 }
             }
 
             // Cleanup
-            for (_, event) in key_handles {
+            for (_, _, event) in key_handles {
                 unsafe {
                     CloseHandle(event);
                 }
@@ -182,7 +184,7 @@ fn setup_registry_notification(path: &str) -> Result<(RegKey, HANDLE), Box<dyn s
     let result = unsafe {
         RegNotifyChangeKeyValue(
             key.raw_handle() as *mut std::ffi::c_void,
-            0, // FALSE - don't watch subtree
+            1, // TRUE - watch subtree so nested changes trigger
             REG_NOTIFY_CHANGE_LAST_SET | REG_NOTIFY_THREAD_AGNOSTIC,
             event,
             1, // TRUE - asynchronous
@@ -218,6 +220,11 @@ fn read_registry_key(path: &str) -> Result<HashMap<String, String>, Box<dyn std:
     let mut values = HashMap::new();
     for (name, value) in key.enum_values().filter_map(|v| v.ok()) {
         values.insert(name, format!("{:?}", value));
+    }
+
+    // Track immediate subkeys so subtree changes are detected
+    for subkey in key.enum_keys().filter_map(|k| k.ok()) {
+        values.insert(format!("__subkey__{}", subkey), "SUBKEY".to_string());
     }
 
     Ok(values)
@@ -377,7 +384,7 @@ fn set_registry_value(key: &RegKey, value_name: &str, value_str: &str) -> Result
         .trim_start_matches("RegValue(")
         .trim_end_matches(")");
 
-    if value_str.contains("REG_SZ") {
+    if value_str.contains("REG_SZ") || value_str.contains("REG_EXPAND_SZ") {
         let cleaned = value_str.trim_start_matches("REG_SZ: ");
         key.set_value(value_name, &cleaned)
             .map_err(|e| format!("Failed to set string value: {}", e))?;

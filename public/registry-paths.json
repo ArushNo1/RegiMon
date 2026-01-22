@@ -86,5 +86,9 @@
   {
     "key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options",
     "description": "Debugging settings and executable redirections. Can be used to hijack program execution."
+  },
+  {
+    "key": "HKEY_CURRENT_USER\\Environment",
+    "description": "User-specific environment variables. Changes can affect user sessions and application behavior."
   }
 ]
