@@ -90,5 +90,13 @@
   {
     "key": "HKEY_CURRENT_USER\\Environment",
     "description": "User-specific environment variables. Changes can affect user sessions and application behavior."
+  },
+  {
+    "key": "HKEY_CURRENT_USER\\Software\\Microsoft\\WAB",
+    "description": "Modified by lovebug worm to keep track of emails sent"
+  },
+  {
+    "key": "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Internet Explorer\\Main",
+    "description": "Used by lovebug worm to make homepage download another virus"
   }
 ]
