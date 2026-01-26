@@ -386,6 +386,7 @@ fn set_registry_value(key: &RegKey, value_name: &str, value_str: &str) -> Result
 
     if value_str.contains("REG_SZ") || value_str.contains("REG_EXPAND_SZ") {
         let cleaned = value_str.trim_start_matches("REG_SZ: ");
+        let cleaned = cleaned.trim_start_matches("REG_EXPAND_SZ: ");
         key.set_value(value_name, &cleaned)
             .map_err(|e| format!("Failed to set string value: {}", e))?;
     } else if value_str.contains("REG_DWORD") {

