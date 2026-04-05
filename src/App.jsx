@@ -404,7 +404,7 @@ function App() {
                         <span className={`px-2.5 py-1 rounded text-xs font-semibold uppercase ${
                           change.change_type === 'modified' 
                             ? 'bg-orange-500/20 text-orange-400' 
-                            : change.change_type === 'added'
+                            : (change.change_type === 'added' || change.type === 'subkey_added')
                             ? 'bg-green-500/20 text-green-400'
                             : 'bg-red-500/20 text-red-400'
                         }`}>
