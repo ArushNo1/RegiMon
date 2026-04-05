@@ -64,17 +64,17 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     const hasStoredPaths = localStorage.getItem('registryPaths');
-    
+
     // Only load from file if there are no stored paths
     if (!hasStoredPaths) {
       (async () => {
         try {
           const response = await fetch('registry-paths.json', { cache: 'no-cache' });
-          if(!response.ok) throw new Error('Failed to fetch registry paths');
+          if (!response.ok) throw new Error('Failed to fetch registry paths');
 
           const paths = await response.json();
 
-          if(!cancelled && Array.isArray(paths) && paths.length > 0){
+          if (!cancelled && Array.isArray(paths) && paths.length > 0) {
             setRegistryPaths(paths);
             localStorage.setItem('registryPaths', JSON.stringify(paths));
           }
@@ -94,13 +94,16 @@ function App() {
   useEffect(() => {
     // Listen for registry changes
     const unlisten = listen('registry-change', (event) => {
-      const change = event.payload;
-      // Add a unique ID to each change based on its properties and timestamp
-      const changeWithId = {
-        ...change,
-        id: `${change.key_path}_${change.value_name}_${change.timestamp}`
-      };
-      setChanges((prev) => [changeWithId, ...prev].slice(0, 100)); // Keep last 100 changes
+      const change = { ...event.payload, id: `${event.payload.key_path}_${event.payload.value_name}_${event.payload.timestamp}` };
+      console.log("THE CHANGE IS", change);
+      setChanges((prev) => {
+        const reverses = findReversed(prev, change);
+        if (reverses) {
+          setUndoneChanges(u => new Set(u).add(reverses));
+          return prev;
+        }
+        return [change, ...prev].slice(0, 100);
+      });
     });
 
     return () => {
@@ -132,7 +135,7 @@ function App() {
     if (newPath && !registryPaths.some(p => p.key === newPath)) {
       setRegistryPaths([...registryPaths, { key: newPath, description: 'Custom registry key added by user.' }]);
       setNewPath('');
-      
+
       // If monitoring is active, restart it with the new path list
       if (monitoring) {
         try {
@@ -149,7 +152,7 @@ function App() {
   async function removePath(pathKey) {
     const newPaths = registryPaths.filter((p) => p.key !== pathKey);
     setRegistryPaths(newPaths);
-    
+
     // If monitoring is active, restart it with the updated path list
     if (monitoring) {
       try {
@@ -165,11 +168,11 @@ function App() {
   async function reloadFromFile() {
     try {
       const response = await fetch('registry-paths.json', { cache: 'no-cache' });
-      if(!response.ok) throw new Error('Failed to fetch registry paths');
+      if (!response.ok) throw new Error('Failed to fetch registry paths');
 
       const paths = await response.json();
 
-      if(Array.isArray(paths) && paths.length > 0){
+      if (Array.isArray(paths) && paths.length > 0) {
         setRegistryPaths(paths);
         localStorage.setItem('registryPaths', JSON.stringify(paths));
       }
@@ -178,11 +181,43 @@ function App() {
     }
   }
 
+  //find if the incoming change is a reversal of one of the previous changes in the list
+  function findReversed(changes, incoming) {
+    if (incoming.change_type === 'modified') {
+      //in changes, find one that has the same key/value, and then the values are opposite
+      return changes.find(c => !undoneChanges.has(c.id) &&
+        c.change_type === 'modified' &&
+        c.key_path === incoming.key_path &&
+        c.value_name === incoming.value_name &&
+        incoming.new_value === c.old_value)?.id ?? null;
+    }
+
+    let opposites = {
+      deleted: 'added', added: 'deleted',
+    };
+    let targetType = opposites[incoming.change_type];
+    if (targetType) {
+      return changes.find(c => !undoneChanges.has(c.id) &&
+        c.change_type === targetType &&
+        c.key_path === incoming.key_path &&
+        c.value_name === incoming.value_name
+      )?.id ?? null;
+    }
+    opposites = { subkey_deleted: 'subkey_added', subkey_added: 'subkey_deleted' };
+    targetType = opposites[incoming.change_type];
+    if (targetType) {
+      return changes.find(c => !undoneChanges.has(c.id) &&
+        c.change_type === targetType &&
+        c.key_path === incoming.key_path)
+    }
+    return null;
+  }
+
   async function handleUndo(change) {
     try {
       const result = await invoke('undo_change', { change });
       console.log('Undo successful:', result);
-      
+
       // Mark this change as undone using its unique ID
       setUndoneChanges(prev => new Set(prev).add(change.id));
     } catch (error) {
@@ -209,7 +244,7 @@ function App() {
   function getChangesCount() {
     let x = 0;
     for (const change of changes) {
-      if(!undoneChanges.has(change.id)){
+      if (!undoneChanges.has(change.id)) {
         x += 1;
       }
     }
@@ -241,11 +276,10 @@ function App() {
               </div>
               <button
                 onClick={monitoring ? handleStopMonitoring : handleStartMonitoring}
-                className={`px-5 py-2 rounded-md font-medium text-sm transition-colors ${
-                  monitoring 
-                    ? 'bg-red-600 hover:bg-red-700 text-white' 
-                    : 'bg-green-600 hover:bg-green-700 text-white'
-                }`}
+                className={`px-5 py-2 rounded-md font-medium text-sm transition-colors ${monitoring
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-green-600 hover:bg-green-700 text-white'
+                  }`}
               >
                 {monitoring ? 'Stop' : 'Start'}
               </button>
@@ -260,21 +294,19 @@ function App() {
           <div className="flex gap-8">
             <button
               onClick={() => setCurrentScreen('monitor')}
-              className={`px-1 py-4 font-medium text-sm transition-colors border-b-2 ${
-                currentScreen === 'monitor'
-                  ? 'text-blue-400 border-blue-400'
-                  : 'text-gray-400 border-transparent hover:text-gray-300'
-              }`}
+              className={`px-1 py-4 font-medium text-sm transition-colors border-b-2 ${currentScreen === 'monitor'
+                ? 'text-blue-400 border-blue-400'
+                : 'text-gray-400 border-transparent hover:text-gray-300'
+                }`}
             >
               Monitored Keys ({registryPaths.length})
             </button>
             <button
               onClick={() => setCurrentScreen('changes')}
-              className={`px-1 py-4 font-medium text-sm transition-colors border-b-2 relative ${
-                currentScreen === 'changes'
-                  ? 'text-blue-400 border-blue-400'
-                  : 'text-gray-400 border-transparent hover:text-gray-300'
-              }`}
+              className={`px-1 py-4 font-medium text-sm transition-colors border-b-2 relative ${currentScreen === 'changes'
+                ? 'text-blue-400 border-blue-400'
+                : 'text-gray-400 border-transparent hover:text-gray-300'
+                }`}
             >
               Recent Changes
               {changesCount > 0 && (
@@ -299,9 +331,9 @@ function App() {
               <div className="flex-1">
                 <h3 className="text-yellow-200 font-semibold mb-1">Limited Privileges</h3>
                 <p className="text-yellow-100 text-sm mb-3">
-                  The application is currently running without administrator privileges. 
-                  Only registry keys in <span className="font-mono font-semibold">HKEY_CURRENT_USER (HKCU)</span> can be monitored and modified. 
-                  To monitor and modify <span className="font-mono font-semibold">HKEY_LOCAL_MACHINE (HKLM)</span> or <span className="font-mono font-semibold">HKEY_CLASSES_ROOT (HKCR)</span>, 
+                  The application is currently running without administrator privileges.
+                  Only registry keys in <span className="font-mono font-semibold">HKEY_CURRENT_USER (HKCU)</span> can be monitored and modified.
+                  To monitor and modify <span className="font-mono font-semibold">HKEY_LOCAL_MACHINE (HKLM)</span> or <span className="font-mono font-semibold">HKEY_CLASSES_ROOT (HKCR)</span>,
                   administrator privileges are required.
                 </p>
                 <button
@@ -317,7 +349,7 @@ function App() {
             </div>
           </div>
         )}
-        
+
         {currentScreen === 'monitor' ? (
           <div>
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-4">
@@ -327,17 +359,17 @@ function App() {
                   placeholder="HKEY_CURRENT_USER\Software\..."
                   value={newPath}
                   onChange={(e) => setNewPath(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addPath()}
+                  onKeyUp={(e) => e.key === 'Enter' && addPath()}
                   className="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500"
                 />
-                <button 
+                <button
                   onClick={addPath}
                   className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-sm transition-colors"
                 >
                   Add Key
                 </button>
               </div>
-              <button 
+              <button
                 onClick={reloadFromFile}
                 className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md font-medium text-sm transition-colors"
               >
@@ -346,8 +378,8 @@ function App() {
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               {registryPaths.map((path) => (
-                <div 
-                  key={path.key} 
+                <div
+                  key={path.key}
                   className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-3 mb-2">
@@ -387,76 +419,74 @@ function App() {
                     Clear All Changes
                   </button>
                 </div>
-              <div className="space-y-3">
-                {changes.map((change, index) => (
-                  <div 
-                    key={change.id || index}
-                    className={`bg-gray-800 border-l-4 border border-gray-700 rounded-lg p-4 ${
-                      change.change_type === 'modified' 
-                        ? 'border-l-orange-500' 
-                        : change.change_type === 'added'
-                        ? 'border-l-green-500'
-                        : 'border-l-red-500'
-                    } ${undoneChanges.has(change.id) ? 'opacity-60' : ''}`}
-                  >
-                    <div className="flex items-start justify-between gap-4 mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2.5 py-1 rounded text-xs font-semibold uppercase ${
-                          change.change_type === 'modified' 
-                            ? 'bg-orange-500/20 text-orange-400' 
-                            : (change.change_type === 'added' || change.type === 'subkey_added')
-                            ? 'bg-green-500/20 text-green-400'
-                            : 'bg-red-500/20 text-red-400'
-                        }`}>
-                          {change.change_type}
-                        </span>
-                        {undoneChanges.has(change.id) && (
-                          <span className="px-2.5 py-1 rounded text-xs font-semibold uppercase bg-blue-500/20 text-blue-400">
-                            UNDONE
+                <div className="space-y-3">
+                  {changes.map((change, index) => (
+                    <div
+                      key={change.id || index}
+                      className={`bg-gray-800 border-l-4 border border-gray-700 rounded-lg p-4 ${change.change_type === 'modified'
+                        ? 'border-l-orange-500'
+                        : (change.change_type === 'added' || change.change_type === 'subkey_added')
+                          ? 'border-l-green-500'
+                          : 'border-l-red-500'
+                        } ${undoneChanges.has(change.id) ? 'opacity-60' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-4 mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2.5 py-1 rounded text-xs font-semibold uppercase ${change.change_type === 'modified'
+                            ? 'bg-orange-500/20 text-orange-400'
+                            : (change.change_type === 'added' || change.change_type === 'subkey_added')
+                              ? 'bg-green-500/20 text-green-400'
+                              : 'bg-red-500/20 text-red-400'
+                            }`}>
+                            {change.change_type}
                           </span>
-                        )}
+                          {undoneChanges.has(change.id) && (
+                            <span className="px-2.5 py-1 rounded text-xs font-semibold uppercase bg-blue-500/20 text-blue-400">
+                              UNDONE
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 text-xs">
+                            {new Date(change.timestamp).toLocaleString()}
+                          </span>
+                          {!undoneChanges.has(change.id) && !change.change_type.startsWith('subkey_') && (
+                            <button
+                              onClick={() => handleUndo(change)}
+                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition-colors"
+                              title="Undo this change"
+                            >
+                              Undo
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-400 text-xs">
-                          {new Date(change.timestamp).toLocaleString()}
-                        </span>
-                        {!undoneChanges.has(change.id) && (
-                          <button
-                            onClick={() => handleUndo(change)}
-                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition-colors"
-                            title="Undo this change"
-                          >
-                            Undo
-                          </button>
+                      <div className="space-y-2 text-sm">
+                        <div className="font-mono">
+                          <span className="text-gray-400 font-medium">Key:</span>
+                          <span className="text-gray-100 ml-2 break-all">{change.key_path}</span>
+                        </div>
+                        <div className="font-mono">
+                          <span className="text-gray-400 font-medium">Value:</span>
+                          <span className="text-gray-100 ml-2">{change.value_name}</span>
+                        </div>
+                        {change.old_value && (
+                          <div className="font-mono">
+                            <span className="text-gray-400 font-medium">Old:</span>
+                            <span className="text-gray-100 ml-2 break-all">{change.old_value}</span>
+                          </div>
+                        )}
+                        {change.new_value && (
+                          <div className="font-mono">
+                            <span className="text-gray-400 font-medium">New:</span>
+                            <span className="text-gray-100 ml-2 break-all">{change.new_value}</span>
+                          </div>
                         )}
                       </div>
                     </div>
-                    <div className="space-y-2 text-sm">
-                      <div className="font-mono">
-                        <span className="text-gray-400 font-medium">Key:</span>
-                        <span className="text-gray-100 ml-2 break-all">{change.key_path}</span>
-                      </div>
-                      <div className="font-mono">
-                        <span className="text-gray-400 font-medium">Value:</span>
-                        <span className="text-gray-100 ml-2">{change.value_name}</span>
-                      </div>
-                      {change.old_value && (
-                        <div className="font-mono">
-                          <span className="text-gray-400 font-medium">Old:</span>
-                          <span className="text-gray-100 ml-2 break-all">{change.old_value}</span>
-                        </div>
-                      )}
-                      {change.new_value && (
-                        <div className="font-mono">
-                          <span className="text-gray-400 font-medium">New:</span>
-                          <span className="text-gray-100 ml-2 break-all">{change.new_value}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
             )}
           </div>
         )}
