@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import './App.css';
@@ -7,6 +7,7 @@ function App() {
   const [monitoring, setMonitoring] = useState(false);
   const [changes, setChanges] = useState([]);
   const [undoneChanges, setUndoneChanges] = useState(new Set()); // Stores unique change IDs
+  const undoneChangesRef = useRef(undoneChanges);
   const [isElevated, setIsElevated] = useState(true); // Assume elevated by default
   const [hasAdminPaths, setHasAdminPaths] = useState(false); // Tracks if any paths require admin
   const [registryPaths, setRegistryPaths] = useState(() => {
@@ -92,10 +93,13 @@ function App() {
   }, [registryPaths]);
 
   useEffect(() => {
+    undoneChangesRef.current = undoneChanges;
+  }, [undoneChanges]);
+
+  useEffect(() => {
     // Listen for registry changes
     const unlisten = listen('registry-change', (event) => {
       const change = { ...event.payload, id: `${event.payload.key_path}_${event.payload.value_name}_${event.payload.timestamp}` };
-      console.log("THE CHANGE IS", change);
       setChanges((prev) => {
         const reverses = findReversed(prev, change);
         if (reverses) {
@@ -185,7 +189,7 @@ function App() {
   function findReversed(changes, incoming) {
     if (incoming.change_type === 'modified') {
       //in changes, find one that has the same key/value, and then the values are opposite
-      return changes.find(c => !undoneChanges.has(c.id) &&
+      return changes.find(c => !undoneChangesRef.current.has(c.id) &&
         c.change_type === 'modified' &&
         c.key_path === incoming.key_path &&
         c.value_name === incoming.value_name &&
@@ -197,7 +201,7 @@ function App() {
     };
     let targetType = opposites[incoming.change_type];
     if (targetType) {
-      return changes.find(c => !undoneChanges.has(c.id) &&
+      return changes.find(c => !undoneChangesRef.current.has(c.id) &&
         c.change_type === targetType &&
         c.key_path === incoming.key_path &&
         c.value_name === incoming.value_name
@@ -206,9 +210,9 @@ function App() {
     opposites = { subkey_deleted: 'subkey_added', subkey_added: 'subkey_deleted' };
     targetType = opposites[incoming.change_type];
     if (targetType) {
-      return changes.find(c => !undoneChanges.has(c.id) &&
+      return changes.find(c => !undoneChangesRef.current.has(c.id) &&
         c.change_type === targetType &&
-        c.key_path === incoming.key_path)
+        c.key_path === incoming.key_path)?.id ?? null;
     }
     return null;
   }

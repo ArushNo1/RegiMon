@@ -78,12 +78,12 @@ public/
 ## TODO
 
 ### Bugs
-- [ ] `findReversed` returns the whole change object for subkey reversals instead of `?.id ?? null` — auto-undo of subkey pairs silently breaks
-- [ ] `findReversed` closes over stale `undoneChanges` state (the listener `useEffect` has `[]` deps, so the "already undone" guard always sees an empty Set and never skips re-undoing)
-- [ ] Remove debug `console.log("THE CHANGE IS", change)` left in the event listener
+- [x] `findReversed` returns the whole change object for subkey reversals instead of `?.id ?? null` — auto-undo of subkey pairs silently breaks
+- [x] `findReversed` closes over stale `undoneChanges` state (the listener `useEffect` has `[]` deps, so the "already undone" guard always sees an empty Set and never skips re-undoing)
+- [x] Remove debug `console.log("THE CHANGE IS", change)` left in the event listener
 
 ### Backend (Rust)
-- [ ] `read_registry_value` command is a stub — returns a format string instead of actually reading the registry
+- [x] `read_registry_value` command is a stub — returns a format string instead of actually reading the registry
 - [ ] `undo_registry_change` has no handler for `subkey_added` / `subkey_deleted` change types — undo on subkey events silently errors
 - [ ] `set_registry_value` doesn't handle `REG_MULTI_SZ` or other uncommon value types — undo fails silently for those values
 - [ ] `value_name` for subkey events is a truncated debug dump of the values `HashMap` — should be the subkey name or left empty

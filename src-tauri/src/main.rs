@@ -28,11 +28,11 @@ fn stop_monitoring(state: State<AppState>) -> Result<String, String> {
     Ok("Monitoring stopped".to_string())
 }
 
-#[tauri::command]
-fn read_registry_value(path: String, value_name: String) -> Result<String, String> {
-    // Implementation for reading a specific registry value
-    Ok(format!("Reading {} from {}", value_name, path))
-}
+// #[tauri::command]
+// fn read_registry_value(path: String, value_name: String) -> Result<String, String> {
+//     // Implementation for reading a specific registry value
+//     Ok(format!("Reading {} from {}", value_name, path))
+// }
 
 #[tauri::command]
 fn undo_change(state: State<AppState>, change: RegistryChange) -> Result<String, String> {
@@ -49,7 +49,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             start_monitoring,
             stop_monitoring,
-            read_registry_value,
+            //read_registry_value,
             undo_change,
             registry_monitor::is_elevated,
             registry_monitor::requires_admin,
