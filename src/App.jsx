@@ -107,7 +107,14 @@ function App() {
           setUndoneChanges(u => new Set(u).add(reverses));
           return prev;
         }
-        return [change, ...prev].slice(0, 100);
+        const newChanges = [change, ...prev];
+        const pruned = newChanges.slice(100).map(c => c.id);
+        if(pruned.length > 0){
+          const next = new Set(undoneChangesRef.current);
+          pruned.forEach(id => next.delete(id));
+          setUndoneChanges(next)
+        }
+        return newChanges.slice(0, 100);
       });
     });
 

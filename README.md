@@ -87,7 +87,7 @@ public/
 - [x] `newPath` is not trimmed before adding — a path with leading/trailing whitespace bypasses deduplication and silently fails to open the key in Rust
 - [x] Change ID uses `_` as separator (`key_path + "_" + value_name + "_" + timestamp`) — underscores appear inside registry paths, so two different key+value combos can produce the same ID; use a monotonic counter or `crypto.randomUUID()`
 - [x] `isElevated` defaults to `true` (fail-open) — if the `is_elevated` command throws, the admin warning is permanently suppressed; should default to `false` so it's fail-secure
-- [ ] `undoneChanges` Set is never pruned — IDs accumulate indefinitely as changes age out of the 100-item cap, growing without bound in long monitoring sessions
+- [x] `undoneChanges` Set is never pruned — IDs accumulate indefinitely as changes age out of the 100-item cap, growing without bound in long monitoring sessions
 - [ ] adding a subkey, then adding a value, then deleting the subkey -> the value entry in changes isn't also closed, leading to os error.
 
 ### Backend (Rust)
