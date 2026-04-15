@@ -93,7 +93,7 @@ public/
 ### Backend (Rust)
 - [x] `read_registry_value` command is a stub — returns a format string instead of actually reading the registry
 - [ ] `undo_registry_change` has no handler for `subkey_added` / `subkey_deleted` change types — undo on subkey events silently errors
-- [ ] `set_registry_value` doesn't handle `REG_MULTI_SZ` or other uncommon value types — undo fails silently for those values
+- [x] `set_registry_value` doesn't handle `REG_MULTI_SZ` or other uncommon value types — undo fails silently for those values
 - [ ] `value_name` for subkey events is a truncated debug dump of the values `HashMap` — should be the subkey name or left empty
 
 ### Polish / UX

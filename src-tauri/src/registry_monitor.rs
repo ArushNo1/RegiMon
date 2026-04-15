@@ -483,7 +483,38 @@ fn set_registry_value(key: &RegKey, value_name: &str, value_str: &str) -> Result
                 return Err(format!("Failed to parse binary value: {}", e));
             }
         }
-    } else {
+        
+    } 
+    else if value_str.contains("REG_MULTI_SZ") {
+        let cleaned = value_str.trim_start_matches("REG_MULTI_SZ: ");
+        let multi_strings_str = cleaned.trim_start_matches('[').trim_end_matches(']');
+        let strings: Vec<&str> = multi_strings_str.split('\n').collect();
+        println!("Parsed multi-string values: {:?}", strings);
+        let mut bytes: Vec<u16> = Vec::new();
+        for s in strings {
+            bytes.extend(s.encode_utf16());
+            bytes.push(0);
+        }
+        bytes.push(0); 
+
+        // Convert Vec<u16> to Vec<u8> (little-endian for Windows)
+        let raw_bytes: Vec<u8> = bytes.iter()
+            .flat_map(|&u| u.to_le_bytes())
+            .collect();
+
+       
+            key.set_raw_value(
+                value_name,
+                &winreg::RegValue {
+                    vtype: winreg::enums::RegType::REG_MULTI_SZ,
+                    bytes: raw_bytes,
+                },
+            )
+            .map_err(|e| format!("Failed to set Multistring value: {}", e))?;
+        
+        
+    }
+    else {
         return Err("Unsupported registry value type".to_string());
     }
 
