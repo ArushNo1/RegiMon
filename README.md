@@ -80,7 +80,15 @@ public/
 ### Bugs
 - [x] `findReversed` returns the whole change object for subkey reversals instead of `?.id ?? null` — auto-undo of subkey pairs silently breaks
 - [x] `findReversed` closes over stale `undoneChanges` state (the listener `useEffect` has `[]` deps, so the "already undone" guard always sees an empty Set and never skips re-undoing)
+- [ ] When tracking undone subkey changes, it simply checks the key name matches rather than checking the values.
 - [x] Remove debug `console.log("THE CHANGE IS", change)` left in the event listener
+- [ ] `handleUndo` has a debug `console.log('Undo successful:', result)` left in
+- [x] `addPath` deduplication is case-sensitive — registry keys are case-insensitive on Windows, so the same path with different casing gets added twice and emits duplicate events
+- [x] `newPath` is not trimmed before adding — a path with leading/trailing whitespace bypasses deduplication and silently fails to open the key in Rust
+- [x] Change ID uses `_` as separator (`key_path + "_" + value_name + "_" + timestamp`) — underscores appear inside registry paths, so two different key+value combos can produce the same ID; use a monotonic counter or `crypto.randomUUID()`
+- [x] `isElevated` defaults to `true` (fail-open) — if the `is_elevated` command throws, the admin warning is permanently suppressed; should default to `false` so it's fail-secure
+- [ ] `undoneChanges` Set is never pruned — IDs accumulate indefinitely as changes age out of the 100-item cap, growing without bound in long monitoring sessions
+- [ ] adding a subkey, then adding a value, then deleting the subkey -> the value entry in changes isn't also closed, leading to os error.
 
 ### Backend (Rust)
 - [x] `read_registry_value` command is a stub — returns a format string instead of actually reading the registry
@@ -94,6 +102,19 @@ public/
 - [ ] Notifications (Windows toast) when a change is detected while the window is hidden
 - [ ] Persist changes log across sessions (currently clears on restart)
 - [ ] Export changes to a file (CSV / JSON)
+- [ ] Export monitoring configuration to a file, and support loading and saving multiple.
+- [ ] "Reset to Default Paths" has no confirmation dialog — a misclick wipes custom configuration with 
+no undo
+- [ ] No loading state while `registry-paths.json` is fetched on first run — key list flashes empty until the fetch resolves
+- [ ] `handleStartMonitoring` / `handleStopMonitoring` failures only log to console; no UI feedback so the user has no idea the action failed
+- [ ] `removePath` during active monitoring: if `stop_monitoring` succeeds but `start_monitoring` throws, `monitoring` state stays `true` while nothing is actually being watched — error is not surfaced to the user
+- [ ] `findReversed` does not mark subkey added/deleted as undoes of each other, opting for two changes for now. It needs to be decided when to mark a change as undone vs 
+
+### Code quality
+- [ ] `getChangesCount` runs O(n) on every render — should be `useMemo(() => ..., [changes, undoneChanges])`
+- [ ] `reloadFromFile` and the first-run mount `useEffect` duplicate identical fetch-and-parse logic — extract to a shared `loadPathsFromFile()` helper
+- [ ] localStorage entries are only validated at the array level — individual entries with a missing `key` field render a broken card and pass `undefined` to Rust
+- [ ] `key={change.id || index}` in the changes list — the `index` fallback defeats React reconciliation when `change.id` is falsy; should be `key={change.id}` with an upstream guard
 
 ### Monitoring configuration
 - [ ] **Per-key scan depth** — recursive depth is a global constant (`10`); each entry in `registry-paths.json` should carry its own `max_depth` so shallow keys (e.g. `Run`) don't waste cycles and deep trees (e.g. `Uninstall`) can go further

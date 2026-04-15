@@ -8,7 +8,7 @@ function App() {
   const [changes, setChanges] = useState([]);
   const [undoneChanges, setUndoneChanges] = useState(new Set()); // Stores unique change IDs
   const undoneChangesRef = useRef(undoneChanges);
-  const [isElevated, setIsElevated] = useState(true); // Assume elevated by default
+  const [isElevated, setIsElevated] = useState(false); // Assume elevated by default
   const [hasAdminPaths, setHasAdminPaths] = useState(false); // Tracks if any paths require admin
   const [registryPaths, setRegistryPaths] = useState(() => {
     // Try to load from localStorage first, then fall back to empty array
@@ -27,6 +27,7 @@ function App() {
   });
   const [currentScreen, setCurrentScreen] = useState('monitor'); // 'monitor' or 'changes'
   const [newPath, setNewPath] = useState('');
+  const [error, setError] = useState(null);
 
   // Check admin status on mount
   useEffect(() => {
@@ -99,7 +100,7 @@ function App() {
   useEffect(() => {
     // Listen for registry changes
     const unlisten = listen('registry-change', (event) => {
-      const change = { ...event.payload, id: `${event.payload.key_path}_${event.payload.value_name}_${event.payload.timestamp}` };
+      const change = { ...event.payload, id: crypto.randomUUID() };
       setChanges((prev) => {
         const reverses = findReversed(prev, change);
         if (reverses) {
@@ -117,12 +118,11 @@ function App() {
 
   async function handleStartMonitoring() {
     try {
-      // Extract just the keys for monitoring
       const pathKeys = registryPaths.map(p => p.key);
       await invoke('start_monitoring', { paths: pathKeys });
       setMonitoring(true);
-    } catch (error) {
-      console.error('Failed to start monitoring:', error);
+    } catch (err) {
+      setError(`Failed to start monitoring: ${err}`);
     }
   }
 
@@ -130,25 +130,33 @@ function App() {
     try {
       await invoke('stop_monitoring');
       setMonitoring(false);
-    } catch (error) {
-      console.error('Failed to stop monitoring:', error);
+    } catch (err) {
+      setError(`Failed to stop monitoring: ${err}`);
     }
   }
 
   async function addPath() {
-    if (newPath && !registryPaths.some(p => p.key === newPath)) {
-      setRegistryPaths([...registryPaths, { key: newPath, description: 'Custom registry key added by user.' }]);
-      setNewPath('');
+    const trimmed = newPath.trim();
+    if (!trimmed) {
+      setError('Registry path cannot be empty.');
+      return;
+    }
+    if (registryPaths.some(p => p.key.toLowerCase() === trimmed.toLowerCase())) {
+      setError(`Already watching: ${trimmed}`);
+      return;
+    }
+    const entry = { key: trimmed, description: 'Custom registry key added by user.' };
+    setRegistryPaths(prev => [...prev, entry]);
+    setNewPath('');
+    setError(null);
 
-      // If monitoring is active, restart it with the new path list
-      if (monitoring) {
-        try {
-          await invoke('stop_monitoring');
-          const pathKeys = [...registryPaths, { key: newPath, description: 'Custom registry key added by user.' }].map(p => p.key);
-          await invoke('start_monitoring', { paths: pathKeys });
-        } catch (error) {
-          console.error('Failed to restart monitoring with new path:', error);
-        }
+    if (monitoring) {
+      try {
+        await invoke('stop_monitoring');
+        const pathKeys = [...registryPaths, entry].map(p => p.key);
+        await invoke('start_monitoring', { paths: pathKeys });
+      } catch (err) {
+        setError(`Key added but failed to restart monitoring: ${err}`);
       }
     }
   }
@@ -157,14 +165,13 @@ function App() {
     const newPaths = registryPaths.filter((p) => p.key !== pathKey);
     setRegistryPaths(newPaths);
 
-    // If monitoring is active, restart it with the updated path list
     if (monitoring) {
       try {
         await invoke('stop_monitoring');
         const pathKeys = newPaths.map(p => p.key);
         await invoke('start_monitoring', { paths: pathKeys });
-      } catch (error) {
-        console.error('Failed to restart monitoring after removing path:', error);
+      } catch (err) {
+        setError(`Key removed but failed to restart monitoring: ${err}`);
       }
     }
   }
@@ -207,13 +214,14 @@ function App() {
         c.value_name === incoming.value_name
       )?.id ?? null;
     }
-    opposites = { subkey_deleted: 'subkey_added', subkey_added: 'subkey_deleted' };
-    targetType = opposites[incoming.change_type];
-    if (targetType) {
-      return changes.find(c => !undoneChangesRef.current.has(c.id) &&
-        c.change_type === targetType &&
-        c.key_path === incoming.key_path)?.id ?? null;
-    }
+    // opposites = { subkey_deleted: 'subkey_added', subkey_added: 'subkey_deleted' };
+    // targetType = opposites[incoming.change_type];
+    // if (targetType) {
+    //   return changes.find(c => !undoneChangesRef.current.has(c.id) &&
+    //     c.change_type === targetType &&
+    //     c.key_path === incoming.key_path)?.id ?? null;
+    // }
+    
     return null;
   }
 
@@ -351,6 +359,25 @@ function App() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Error Banner */}
+        {error && (
+          <div className="bg-red-950 border border-red-700 rounded-lg px-4 py-3 mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <svg className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-red-200 text-sm truncate">{error}</p>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-400 hover:text-red-200 flex-shrink-0 text-lg leading-none transition-colors"
+              aria-label="Dismiss error"
+            >
+              &times;
+            </button>
           </div>
         )}
 

@@ -1,7 +1,8 @@
 [
   {
     "key": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-    "description": "Programs that run automatically when the current user logs in. Commonly used by malware for persistence."
+    "description": "Programs that run automatically when the current user logs in. Commonly used by malware for persistence.",
+    "recurse_depth": 9
   },
   {
     "key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
