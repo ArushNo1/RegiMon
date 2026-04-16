@@ -1,1 +1,58 @@
 @import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Fira Code', ui-monospace, monospace;
+
+  --color-bg-primary: #0D1117;
+  --color-bg-surface: #0F1B33;
+  --color-bg-elevated: #1A3060;
+  --color-border: #1E3A8A66;
+  --color-border-hover: #1E3A8AAA;
+
+  --color-text-primary: #F1F5F9;
+  --color-text-muted: #7EA8D8;
+
+  --color-accent: #2B70D8;
+  --color-accent-highlight: #5BA5F0;
+  --color-accent-live: #22C55E;
+  --color-accent-danger: #EF4444;
+  --color-accent-warn: #F59E0B;
+  --color-accent-change: #F97316;
+  --color-accent-info: #3B82F6;
+}
+
+/* Entry animation for new change cards */
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 200ms ease-out;
+}
+
+/* Pulsing glow ring for live status indicator */
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s ease-out infinite;
+}

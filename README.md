@@ -78,26 +78,18 @@ public/
 ## TODO
 
 ### Bugs
-- [x] `findReversed` returns the whole change object for subkey reversals instead of `?.id ?? null` — auto-undo of subkey pairs silently breaks
-- [x] `findReversed` closes over stale `undoneChanges` state (the listener `useEffect` has `[]` deps, so the "already undone" guard always sees an empty Set and never skips re-undoing)
 - [ ] When tracking undone subkey changes, it simply checks the key name matches rather than checking the values.
-- [x] Remove debug `console.log("THE CHANGE IS", change)` left in the event listener
 - [ ] `handleUndo` has a debug `console.log('Undo successful:', result)` left in
-- [x] `addPath` deduplication is case-sensitive — registry keys are case-insensitive on Windows, so the same path with different casing gets added twice and emits duplicate events
-- [x] `newPath` is not trimmed before adding — a path with leading/trailing whitespace bypasses deduplication and silently fails to open the key in Rust
 - [x] Change ID uses `_` as separator (`key_path + "_" + value_name + "_" + timestamp`) — underscores appear inside registry paths, so two different key+value combos can produce the same ID; use a monotonic counter or `crypto.randomUUID()`
-- [x] `isElevated` defaults to `true` (fail-open) — if the `is_elevated` command throws, the admin warning is permanently suppressed; should default to `false` so it's fail-secure
 - [x] `undoneChanges` Set is never pruned — IDs accumulate indefinitely as changes age out of the 100-item cap, growing without bound in long monitoring sessions
 - [ ] adding a subkey, then adding a value, then deleting the subkey -> the value entry in changes isn't also closed, leading to os error.
 
 ### Backend (Rust)
-- [x] `read_registry_value` command is a stub — returns a format string instead of actually reading the registry
 - [ ] `undo_registry_change` has no handler for `subkey_added` / `subkey_deleted` change types — undo on subkey events silently errors
-- [x] `set_registry_value` doesn't handle `REG_MULTI_SZ` or other uncommon value types — undo fails silently for those values
 - [ ] `value_name` for subkey events is a truncated debug dump of the values `HashMap` — should be the subkey name or left empty
 
 ### Polish / UX
-- [ ] Custom app icon — currently uses the stock regedit icon
+- [x] Custom app icon — currently uses the stock regedit icon
 - [ ] Filter / search the changes feed by key path or change type
 - [ ] Notifications (Windows toast) when a change is detected while the window is hidden
 - [ ] Persist changes log across sessions (currently clears on restart)
@@ -108,7 +100,8 @@ no undo
 - [ ] No loading state while `registry-paths.json` is fetched on first run — key list flashes empty until the fetch resolves
 - [ ] `handleStartMonitoring` / `handleStopMonitoring` failures only log to console; no UI feedback so the user has no idea the action failed
 - [ ] `removePath` during active monitoring: if `stop_monitoring` succeeds but `start_monitoring` throws, `monitoring` state stays `true` while nothing is actually being watched — error is not surfaced to the user
-- [ ] `findReversed` does not mark subkey added/deleted as undoes of each other, opting for two changes for now. It needs to be decided when to mark a change as undone vs 
+- [ ] `findReversed` does not mark subkey added/deleted as undoes of each other, opting for two changes for now. It needs to be decided when to mark a change as undone vs (current plan: make it mark the change as undone, + add a new entry for the new change)
+- [ ] Settings menu: Whether to display absolute time (timestamp) or relative time, and then also the options with the keyset and files, and stuff about the server logging there eventually.
 
 ### Code quality
 - [ ] `getChangesCount` runs O(n) on every render — should be `useMemo(() => ..., [changes, undoneChanges])`
