@@ -9,6 +9,7 @@ import AdminBanner from './components/AdminBanner';
 import ErrorBanner from './components/ErrorBanner';
 import KeysPanel from './components/KeysPanel';
 import ChangesPanel from './components/ChangesPanel';
+import SettingsPanel from './components/SettingsPanel';
 
 function App() {
   const [monitoring, setMonitoring] = useState(false);
@@ -31,7 +32,7 @@ function App() {
     }
     return [];
   });
-  const [currentScreen, setCurrentScreen] = useState('monitor');
+  const [currentScreen, setCurrentScreen] = useState('keys');
   const [newPath, setNewPath] = useState('');
   const [error, setError] = useState(null);
 
@@ -286,7 +287,7 @@ function App() {
           <ErrorBanner error={error} onDismiss={() => setError(null)} />
         )}
 
-        {currentScreen === 'monitor' ? (
+        {currentScreen === 'keys' ? (
           <KeysPanel
             registryPaths={registryPaths}
             newPath={newPath}
@@ -295,13 +296,15 @@ function App() {
             onRemovePath={removePath}
             onReloadFromFile={reloadFromFile}
           />
-        ) : (
+        ) : currentScreen === 'changes' ? (
           <ChangesPanel
             changes={changes}
             undoneChanges={undoneChanges}
             monitoring={monitoring}
             onUndo={handleUndo}
           />
+        ) : (
+          <SettingsPanel />
         )}
       </div>
     </div>

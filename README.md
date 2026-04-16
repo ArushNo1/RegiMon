@@ -78,46 +78,48 @@ public/
 ## TODO
 
 ### Bugs
-- [ ] When tracking undone subkey changes, it simply checks the key name matches rather than checking the values.
-- [ ] `handleUndo` has a debug `console.log('Undo successful:', result)` left in
-- [x] Change ID uses `_` as separator (`key_path + "_" + value_name + "_" + timestamp`) — underscores appear inside registry paths, so two different key+value combos can produce the same ID; use a monotonic counter or `crypto.randomUUID()`
-- [x] `undoneChanges` Set is never pruned — IDs accumulate indefinitely as changes age out of the 100-item cap, growing without bound in long monitoring sessions
-- [ ] adding a subkey, then adding a value, then deleting the subkey -> the value entry in changes isn't also closed, leading to os error.
 
-### Backend (Rust)
-- [ ] `undo_registry_change` has no handler for `subkey_added` / `subkey_deleted` change types — undo on subkey events silently errors
-- [ ] `value_name` for subkey events is a truncated debug dump of the values `HashMap` — should be the subkey name or left empty
+- [ ] `handleUndo` has a stale debug `console.log('Undo successful:', result)` — should be removed (`App.jsx:232`)
+- [ ] `findReversed` ignores `subkey_added`/`subkey_deleted` — subkey reversal is never detected, so undoing a subkey addition leaves the original change un-marked
+- [ ] `findReversed` subkey-undone check only matches on key name, not on which subkey — two different subkeys under the same path can falsely cancel each other
+- [ ] Adding a subkey → adding a value under it → deleting the subkey causes an OS error because the value change entry still references the now-deleted key
+- [ ] `removePath` during active monitoring: if `stop_monitoring` succeeds but the subsequent `start_monitoring` throws, `monitoring` state stays `true` while nothing is actually being watched (`App.jsx:198-210`)
 
-### Polish / UX
-- [x] Custom app icon — currently uses the stock regedit icon
-- [ ] Filter / search the changes feed by key path or change type
-- [ ] Notifications (Windows toast) when a change is detected while the window is hidden
-- [ ] Persist changes log across sessions (currently clears on restart)
-- [ ] Export changes to a file (CSV / JSON)
-- [ ] Export monitoring configuration to a file, and support loading and saving multiple.
-- [ ] "Reset to Default Paths" has no confirmation dialog — a misclick wipes custom configuration with 
-no undo
-- [ ] No loading state while `registry-paths.json` is fetched on first run — key list flashes empty until the fetch resolves
-- [ ] `handleStartMonitoring` / `handleStopMonitoring` failures only log to console; no UI feedback so the user has no idea the action failed
-- [ ] `removePath` during active monitoring: if `stop_monitoring` succeeds but `start_monitoring` throws, `monitoring` state stays `true` while nothing is actually being watched — error is not surfaced to the user
-- [ ] `findReversed` does not mark subkey added/deleted as undoes of each other, opting for two changes for now. It needs to be decided when to mark a change as undone vs (current plan: make it mark the change as undone, + add a new entry for the new change)
-- [ ] Settings menu: Whether to display absolute time (timestamp) or relative time, and then also the options with the keyset and files, and stuff about the server logging there eventually.
+### Backend (Rust — requires human dev)
+
+- [ ] `undo_registry_change` has no handler for `subkey_added`/`subkey_deleted` — undo on subkey events silently fails
+- [ ] `value_name` for subkey events is a debug dump of the values `HashMap` instead of the subkey name
 
 ### Code quality
-- [ ] `getChangesCount` runs O(n) on every render — should be `useMemo(() => ..., [changes, undoneChanges])`
-- [ ] `reloadFromFile` and the first-run mount `useEffect` duplicate identical fetch-and-parse logic — extract to a shared `loadPathsFromFile()` helper
-- [ ] localStorage entries are only validated at the array level — individual entries with a missing `key` field render a broken card and pass `undefined` to Rust
-- [ ] `key={change.id || index}` in the changes list — the `index` fallback defeats React reconciliation when `change.id` is falsy; should be `key={change.id}` with an upstream guard
+
+- [ ] `getChangesCount` recalculates on every render — should be `useMemo(() => ..., [changes, undoneChanges])` (`App.jsx:254`)
+- [ ] `reloadFromFile` and the first-run mount `useEffect` contain identical fetch-and-parse logic — extract to a shared `loadPathsFromFile()` helper (`App.jsx:73` and `213`)
+- [ ] localStorage entries are only validated at the array level — an entry with a missing `key` field passes `undefined` to Rust and renders a broken card
+
+### UX polish
+
+- [ ] Settings panel is a stub — needs: absolute vs. relative timestamp toggle, per-key depth control, keyset import/export
+- [ ] "Reset to Default Paths" has no confirmation dialog — a misclick wipes custom configuration with no undo
+- [ ] No loading state while `registry-paths.json` is fetched on first run — key list flashes empty until the fetch resolves
+- [ ] Admin elevation banner should also offer to disable the specific keys that require admin rather than only prompting to re-launch elevated
+- [ ] Keys should be individually togglable (enabled/disabled) without removing them from the list
+- [ ] Filter/search the changes feed by key path or change type
+- [ ] Windows toast notification when a change is detected while the window is minimised to tray
+- [ ] Persist the changes log across sessions (currently clears on restart)
+- [ ] Export changes to CSV/JSON
+- [ ] `findReversed` logs two separate entries for subkey add/delete pairs — decide on and implement the correct behaviour (mark as undone + new entry, or collapse)
 
 ### Monitoring configuration
-- [ ] **Per-key scan depth** — recursive depth is a global constant (`10`); each entry in `registry-paths.json` should carry its own `max_depth` so shallow keys (e.g. `Run`) don't waste cycles and deep trees (e.g. `Uninstall`) can go further
-- [ ] **In-app registry browser** — a tree view to navigate the live registry and add keys to the watch list without knowing the path upfront; makes the tool usable without registry expertise
-- [ ] **Curated key profiles** — ship multiple named presets (e.g. "Malware Persistence", "Software Installation Audit", "Browser Hijack Detection") that the user can load in one click; the current single flat list is the entire scope of the tool
-- [ ] **Import/export watch lists** — save and share `.json` monitoring profiles so configurations can be versioned or distributed to a team
 
-### Killer features (real differentiators)
-- [ ] **Process attribution** — identify *which process* caused a registry change using ETW (Event Tracing for Windows) or a kernel callback; this is what separates a registry monitor from a registry *auditor* and is not available in most free tools
-- [ ] **Severity scoring** — assign a threat level to each monitored key (e.g. writes to `Run` = high, timezone change = low) and surface that in the UI with colour coding; lets analysts triage at a glance instead of reading every entry
-- [ ] **Snapshot / diff mode** — capture the full state of watched keys before an action (installing software, running a suspicious binary), then diff against the post-action state; the classic use case for malware sandbox analysis
-- [ ] **Threat intelligence matching** — flag changes that match a known-bad pattern library (e.g. specific value names or data written by known malware families); could start as a bundled JSON ruleset
-- [ ] **Alert rules engine** — let the user define conditions ("alert if any value is written under `HKLM\...\Run` by a process not in my allowlist") so the tool actively defends rather than just observing
+- [ ] **Per-key scan depth** — recursive depth is a global constant (`10`); each entry in `registry-paths.json` should carry its own `max_depth`
+- [ ] **Import/export watch lists** — save/load `.json` monitoring profiles; support multiple named configs
+- [ ] **Curated key profiles** — named presets ("Malware Persistence", "Browser Hijack Detection", etc.) loadable in one click
+- [ ] **In-app registry browser** — tree view to navigate the live registry and add keys without knowing paths upfront
+
+### Killer features
+
+- [ ] **Process attribution** — identify *which process* caused a change via ETW or a kernel callback; the main differentiator vs. free tools
+- [ ] **Severity scoring** — threat level per key (e.g. writes to `Run` = high) surfaced as colour coding for fast triage
+- [ ] **Snapshot / diff mode** — capture full key state before/after an action (installing software, running a binary) and diff; classic malware sandbox use case
+- [ ] **Threat intelligence matching** — flag changes matching a known-bad pattern library (bundled JSON ruleset)
+- [ ] **Alert rules engine** — user-defined conditions with process allowlists so the tool actively defends rather than just observing
