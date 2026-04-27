@@ -84,6 +84,7 @@ public/
 - [ ] `findReversed` subkey-undone check only matches on key name, not on which subkey — two different subkeys under the same path can falsely cancel each other
 - [ ] Adding a subkey → adding a value under it → deleting the subkey causes an OS error because the value change entry still references the now-deleted key
 - [ ] `removePath` during active monitoring: if `stop_monitoring` succeeds but the subsequent `start_monitoring` throws, `monitoring` state stays `true` while nothing is actually being watched (`App.jsx:198-210`)
+- [ ] remove computer from registry key names when reading them in
 
 ### Backend (Rust — requires human dev)
 

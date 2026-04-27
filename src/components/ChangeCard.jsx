@@ -19,7 +19,8 @@ function timeAgo(timestamp) {
 
 export default function ChangeCard({ change, isUndone, onUndo }) {
   const config = TYPE_CONFIG[change.change_type] || TYPE_CONFIG.modified;
-  const canUndo = !isUndone && !change.change_type.startsWith('subkey_');
+  const canUndo = !isUndone
+  //const canUndo = !isUndone && !change.change_type.startsWith('subkey_');
 
   return (
     <div
