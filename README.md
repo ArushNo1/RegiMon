@@ -79,7 +79,7 @@ public/
 
 ### Bugs
 
-- [ ] `handleUndo` has a stale debug `console.log('Undo successful:', result)` — should be removed (`App.jsx:232`)
+- [x] `handleUndo` has a stale debug `console.log('Undo successful:', result)` — should be removed (`App.jsx:232`)
 - [ ] `findReversed` ignores `subkey_added`/`subkey_deleted` — subkey reversal is never detected, so undoing a subkey addition leaves the original change un-marked
 - [ ] `findReversed` subkey-undone check only matches on key name, not on which subkey — two different subkeys under the same path can falsely cancel each other
 - [ ] Adding a subkey → adding a value under it → deleting the subkey causes an OS error because the value change entry still references the now-deleted key
@@ -107,7 +107,6 @@ public/
 - [ ] Windows toast notification when a change is detected while the window is minimised to tray
 - [ ] Persist the changes log across sessions (currently clears on restart)
 - [ ] Export changes to CSV/JSON
-- [ ] `findReversed` logs two separate entries for subkey add/delete pairs — decide on and implement the correct behaviour (mark as undone + new entry, or collapse)
 
 ### Monitoring configuration
 

@@ -110,7 +110,6 @@ function App() {
         const reverses = findReversed(prev, change);
         if (reverses) {
           setUndoneChanges(u => new Set(u).add(reverses));
-          return prev;
         }
         const newChanges = [change, ...prev];
         const pruned = newChanges.slice(100).map(c => c.id);
@@ -229,7 +228,6 @@ function App() {
   async function handleUndo(change) {
     try {
       const result = await invoke('undo_change', { change });
-      console.log('Undo successful:', result);
       setUndoneChanges(prev => new Set(prev).add(change.id));
     } catch (error) {
       console.error('Failed to undo change:', error);
