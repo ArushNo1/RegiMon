@@ -13,7 +13,8 @@ use windows_sys::Win32::Security::{
     GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
 };
 use windows_sys::Win32::System::Registry::{
-    REG_NOTIFY_CHANGE_LAST_SET, REG_NOTIFY_CHANGE_NAME, REG_NOTIFY_THREAD_AGNOSTIC, RegNotifyChangeKeyValue
+    RegNotifyChangeKeyValue, REG_NOTIFY_CHANGE_LAST_SET, REG_NOTIFY_CHANGE_NAME,
+    REG_NOTIFY_THREAD_AGNOSTIC,
 };
 use windows_sys::Win32::System::Threading::{
     CreateEventW, GetCurrentProcess, OpenProcessToken, WaitForMultipleObjects,
@@ -38,8 +39,8 @@ pub struct RegistryMonitor {
     ignored_changes: Arc<Mutex<HashSet<String>>>,
 }
 
-const REGNOTIFYFLAGS: u32 = REG_NOTIFY_CHANGE_LAST_SET | REG_NOTIFY_THREAD_AGNOSTIC | REG_NOTIFY_CHANGE_NAME;
-
+const REGNOTIFYFLAGS: u32 =
+    REG_NOTIFY_CHANGE_LAST_SET | REG_NOTIFY_THREAD_AGNOSTIC | REG_NOTIFY_CHANGE_NAME;
 
 impl RegistryMonitor {
     pub fn new() -> Self {
@@ -229,6 +230,23 @@ fn setup_registry_notification(path: &str) -> Result<(RegKey, HANDLE), Box<dyn s
     Ok((key, event))
 }
 
+fn get_parent_key(path: &str) -> Result<String, std::io::Error> {
+    let parts: Vec<&str> = path.split('\\').collect();
+    if parts.len() < 2 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Invalid registry path: missing subkey",
+        ));
+        if parts.is_empty() || parts[0].is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Invalid registry path: missing hive",
+            ));
+        }
+    }
+    let parent_key = parts[0..(parts.len() - 1)].join("\\");
+    Ok(parent_key)
+}
 fn get_hive_and_keypath(path: &str) -> Result<(RegKey, String), std::io::Error> {
     let parts: Vec<&str> = path.split('\\').collect();
     if parts.is_empty() || parts[0].is_empty() {
@@ -429,7 +447,41 @@ pub fn undo_registry_change(
 
             Ok(format!("Removed added value '{}'", change.value_name))
         }
-        _ => Err("Unknown change type".to_string()),
+
+        "subkey_added" => {
+            // Delete the newly added subkey
+            let subkey_full_path = format!("{}\\{}", change.key_path, change.value_name);
+            let (hive, subkey_path) = get_hive_and_keypath(&subkey_full_path)
+                .map_err(|e| format!("Invalid registry path: {}", e))?;
+            println!("change key path: {}", change.key_path);
+            println!("subkey full path: {}", subkey_full_path);
+            println!("subkey path: {}", subkey_path);
+            
+            let parent_path = get_parent_key(&change.key_path).unwrap();
+            println!("parent path: {}", parent_path);
+            let parent_key = hive
+                .open_subkey_with_flags(&parent_path, KEY_WRITE)
+                .map_err(|e| format!("Failed to open parent key: {}", &change.key_path))?;
+
+            parent_key
+                .delete_subkey_all(&change.value_name)
+                .map_err(|e| format!("Failed to delete subkey: {}", e))?;
+            println!("Subkey deleted: {}", change.value_name);
+            // Wait briefly, then clear ignored status
+            let ignored = ignored_changes.clone();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(500));
+                let mut ignored = ignored.lock().unwrap();
+                ignored.remove(&change_key);
+            });
+
+            Ok(format!("Removed added subkey '{}'", change.value_name))
+        }
+
+        _ => {
+            print!("change type: {}", change.change_type);
+            Err("Unknown change type".to_string())
+        }
     }
 }
 
@@ -483,9 +535,7 @@ fn set_registry_value(key: &RegKey, value_name: &str, value_str: &str) -> Result
                 return Err(format!("Failed to parse binary value: {}", e));
             }
         }
-        
-    } 
-    else if value_str.contains("REG_MULTI_SZ") {
+    } else if value_str.contains("REG_MULTI_SZ") {
         let cleaned = value_str.trim_start_matches("REG_MULTI_SZ: ");
         let multi_strings_str = cleaned.trim_start_matches('[').trim_end_matches(']');
         let strings: Vec<&str> = multi_strings_str.split('\n').collect();
@@ -495,26 +545,20 @@ fn set_registry_value(key: &RegKey, value_name: &str, value_str: &str) -> Result
             bytes.extend(s.encode_utf16());
             bytes.push(0);
         }
-        bytes.push(0); 
+        bytes.push(0);
 
         // Convert Vec<u16> to Vec<u8> (little-endian for Windows)
-        let raw_bytes: Vec<u8> = bytes.iter()
-            .flat_map(|&u| u.to_le_bytes())
-            .collect();
+        let raw_bytes: Vec<u8> = bytes.iter().flat_map(|&u| u.to_le_bytes()).collect();
 
-       
-            key.set_raw_value(
-                value_name,
-                &winreg::RegValue {
-                    vtype: winreg::enums::RegType::REG_MULTI_SZ,
-                    bytes: raw_bytes,
-                },
-            )
-            .map_err(|e| format!("Failed to set Multistring value: {}", e))?;
-        
-        
-    }
-    else {
+        key.set_raw_value(
+            value_name,
+            &winreg::RegValue {
+                vtype: winreg::enums::RegType::REG_MULTI_SZ,
+                bytes: raw_bytes,
+            },
+        )
+        .map_err(|e| format!("Failed to set Multistring value: {}", e))?;
+    } else {
         return Err("Unsupported registry value type".to_string());
     }
 
