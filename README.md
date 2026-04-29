@@ -88,8 +88,8 @@ public/
 
 ### Backend (Rust — requires human dev)
 
-- [ ] `undo_registry_change` has no handler for `subkey_added`/`subkey_deleted` — undo on subkey events silently fails
-- [ ] `value_name` for subkey events is a debug dump of the values `HashMap` instead of the subkey name
+- [x] `undo_registry_change` has no handler for `subkey_added`/`subkey_deleted` — undo on subkey events silently fails
+- [x] `value_name` for subkey events is a debug dump of the values `HashMap` instead of the subkey name
 
 ### Code quality
 
